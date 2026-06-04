@@ -1992,8 +1992,10 @@ class P3NocApp(App):
             db_ok = self.db_service.check_db_health()
             if db_ok:
                 articles = self.db_service.get_latest_analyzed_articles_for_briefing(limit=50)
+            logger.info("BRIEFING_STAGE=DB_FETCH_COMPLETE")
         except Exception as e:
             logger.error(f"Database error during briefing generation: {e}")
+            logger.info("BRIEFING_STAGE=DB_FETCH_COMPLETE")
             db_ok = False
 
         # Calculate values if we have database articles
@@ -2003,8 +2005,10 @@ class P3NocApp(App):
                 bear_count = 0
                 neutral_count = 0
                 
-                total_weight = 0
-                sentiment_weight = 0
+                pos_weight = 0.0
+                neg_weight = 0.0
+                neu_weight = 0.0
+                total_weight = 0.0
                 
                 category_counts = {}
                 category_risk_scores = {}
@@ -2014,16 +2018,20 @@ class P3NocApp(App):
                     sentiment = str(art.get("sentiment", "")).upper()
                     importance = float(art.get("importance_score") or 1)
                     
-                    if "BULL" in sentiment:
+                    is_bull = "BULL" in sentiment or "POS" in sentiment
+                    is_bear = "BEAR" in sentiment or "NEG" in sentiment
+                    
+                    if is_bull:
                         bull_count += 1
+                        pos_weight += importance
                         total_weight += importance
-                        sentiment_weight += importance
-                    elif "BEAR" in sentiment:
+                    elif is_bear:
                         bear_count += 1
+                        neg_weight += importance
                         total_weight += importance
-                        sentiment_weight -= importance
                     else:
                         neutral_count += 1
+                        neu_weight += importance
                         total_weight += importance
                     
                     # Classify category
@@ -2031,9 +2039,9 @@ class P3NocApp(App):
                     category_counts[category] = category_counts.get(category, 0) + 1
                     
                     risk_val = 0
-                    if "BEAR" in sentiment:
+                    if is_bear:
                         risk_val = importance
-                    elif "BULL" not in sentiment:  # NEUTRAL
+                    elif not is_bull:  # NEUTRAL
                         risk_val = importance * 0.5
                     
                     category_risk_scores[category] = category_risk_scores.get(category, 0.0) + risk_val
@@ -2046,9 +2054,14 @@ class P3NocApp(App):
                 else:
                     market_state = "NEUTRAL"
                     
-                # Compute Confidence (0 - 100%)
+                # Compute Confidence (0 - 100%) reflecting certainty
+                active_weight = pos_weight + neg_weight
                 if total_weight > 0:
-                    confidence_val = int(round((abs(sentiment_weight) / total_weight) * 100))
+                    if active_weight > 0:
+                        prevailing_weight = max(pos_weight, neg_weight)
+                        confidence_val = int(round((prevailing_weight / (active_weight + 0.5 * neu_weight)) * 100))
+                    else:
+                        confidence_val = 0
                 else:
                     confidence_val = 0
                 confidence_str = f"{confidence_val}%"
@@ -2116,8 +2129,10 @@ class P3NocApp(App):
                 else:
                     outlook = "Range-bound with moderate volatility."
 
+                logger.info("BRIEFING_STAGE=LOCAL_ANALYSIS_COMPLETE")
             except Exception as e:
                 logger.error(f"Error computing local market data: {e}")
+                logger.info("BRIEFING_STAGE=LOCAL_ANALYSIS_COMPLETE")
 
         # Now query Ollama *only* for the single summary sentence
         ollama_ok = False
@@ -2140,16 +2155,37 @@ class P3NocApp(App):
                 }
                 
                 import requests
-                res = requests.post(url, json=payload, timeout=120.0)
+                logger.info("BRIEFING_STAGE=OLLAMA_REQUEST_START")
+                start_time = datetime.now()
+                logger.info(f"Ollama request start time: {start_time.isoformat()}")
+                
+                # Watchdog/timeout is set to 15.0 seconds
+                res = requests.post(url, json=payload, timeout=15.0)
+                
+                end_time = datetime.now()
+                logger.info(f"Ollama response completion time: {end_time.isoformat()}")
+                logger.info(f"Ollama response HTTP status code: {res.status_code}")
+                logger.info(f"Ollama response content length: {len(res.text)}")
+                
                 if res.status_code == 200:
                     summary = res.json().get("response", "").strip()
                     summary = summary.replace('"', '').replace('`', '').strip()
                     ollama_ok = True
                     ai_online = True
+                    logger.info("BRIEFING_STAGE=OLLAMA_REQUEST_SUCCESS")
                 else:
                     logger.warning(f"Ollama returned HTTP status {res.status_code}")
+                    logger.info("BRIEFING_STAGE=OLLAMA_REQUEST_FAILED")
+            except requests.exceptions.Timeout as te:
+                end_time = datetime.now()
+                logger.info(f"Ollama response completion time: {end_time.isoformat()} (Timeout)")
+                logger.error(f"Ollama request timed out after 15 seconds: {te}")
+                logger.info("BRIEFING_STAGE=OLLAMA_REQUEST_FAILED")
             except Exception as e:
-                logger.warning(f"Ollama query failed: {e}")
+                end_time = datetime.now()
+                logger.info(f"Ollama response completion time: {end_time.isoformat()} (Error)")
+                logger.error(f"Ollama query failed: {e}")
+                logger.info("BRIEFING_STAGE=OLLAMA_REQUEST_FAILED")
 
         # If Ollama is offline or query failed, load the cached summary
         if not ollama_ok:
@@ -2175,10 +2211,12 @@ class P3NocApp(App):
         # If Ollama query succeeded, we save this newly generated briefing object to cache
         if ollama_ok:
             self._save_briefing_to_file(briefing_object)
+            logger.info("BRIEFING_STAGE=CACHE_WRITE_COMPLETE")
             
         # Update the UI
         self.last_briefing_time = datetime.utcnow()
         self.app.call_from_thread(self._update_briefing_ui, briefing_object)
+        logger.info("BRIEFING_STAGE=UI_UPDATE_COMPLETE")
 
     def _update_briefing_ui(self, briefing_object):
         try:

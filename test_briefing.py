@@ -47,8 +47,12 @@ def main():
     bull_count = 0
     bear_count = 0
     neutral_count = 0
-    total_weight = 0
-    sentiment_weight = 0
+    
+    pos_weight = 0.0
+    neg_weight = 0.0
+    neu_weight = 0.0
+    total_weight = 0.0
+    
     category_counts = {}
     category_risk_scores = {}
     
@@ -57,25 +61,29 @@ def main():
         sentiment = str(art.get("sentiment", "")).upper()
         importance = float(art.get("importance_score") or 1)
         
-        if "BULL" in sentiment:
+        is_bull = "BULL" in sentiment or "POS" in sentiment
+        is_bear = "BEAR" in sentiment or "NEG" in sentiment
+        
+        if is_bull:
             bull_count += 1
+            pos_weight += importance
             total_weight += importance
-            sentiment_weight += importance
-        elif "BEAR" in sentiment:
+        elif is_bear:
             bear_count += 1
+            neg_weight += importance
             total_weight += importance
-            sentiment_weight -= importance
         else:
             neutral_count += 1
+            neu_weight += importance
             total_weight += importance
         
         category = classify_headline_impact(title)
         category_counts[category] = category_counts.get(category, 0) + 1
         
         risk_val = 0
-        if "BEAR" in sentiment:
+        if is_bear:
             risk_val = importance
-        elif "BULL" not in sentiment:  # NEUTRAL
+        elif not is_bull:  # NEUTRAL
             risk_val = importance * 0.5
         category_risk_scores[category] = category_risk_scores.get(category, 0.0) + risk_val
 
@@ -86,8 +94,13 @@ def main():
     else:
         market_state = "NEUTRAL"
         
+    active_weight = pos_weight + neg_weight
     if total_weight > 0:
-        confidence_val = int(round((abs(sentiment_weight) / total_weight) * 100))
+        if active_weight > 0:
+            prevailing_weight = max(pos_weight, neg_weight)
+            confidence_val = int(round((prevailing_weight / (active_weight + 0.5 * neu_weight)) * 100))
+        else:
+            confidence_val = 0
     else:
         confidence_val = 0
     confidence_str = f"{confidence_val}%"
