@@ -160,7 +160,7 @@ def main():
     logger.info(f" - Outlook: {outlook}")
 
     logger.info(f"Querying Ollama at {OLLAMA_URL} with model {OLLAMA_MODEL}...")
-    headlines = [art.get("title", "") for art in articles[:15]]
+    headlines = [art.get("title", "") for art in articles[:5]]
     headlines_str = "\n".join(f"- {h}" for h in headlines)
     prompt_text = (
         f"headlines:\n{headlines_str}\n\n"
@@ -173,7 +173,7 @@ def main():
             "model": OLLAMA_MODEL,
             "prompt": prompt_text,
             "stream": False
-        }, timeout=45.0)
+        }, timeout=120.0)
         
         logger.info(f"Ollama response status: {res.status_code}")
         if res.status_code == 200:

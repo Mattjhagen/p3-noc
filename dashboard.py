@@ -2124,7 +2124,7 @@ class P3NocApp(App):
         if db_ok and articles:
             try:
                 # Compile headlines
-                headlines = [art.get("title", "") for art in articles[:15]]
+                headlines = [art.get("title", "") for art in articles[:5]]
                 headlines_str = "\n".join(f"- {h}" for h in headlines)
                 
                 prompt_text = (
@@ -2140,7 +2140,7 @@ class P3NocApp(App):
                 }
                 
                 import requests
-                res = requests.post(url, json=payload, timeout=45.0)
+                res = requests.post(url, json=payload, timeout=120.0)
                 if res.status_code == 200:
                     summary = res.json().get("response", "").strip()
                     summary = summary.replace('"', '').replace('`', '').strip()
