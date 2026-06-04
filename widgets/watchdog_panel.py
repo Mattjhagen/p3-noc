@@ -9,12 +9,12 @@ class WatchdogPanel(Static):
     Displays the real-time operational status (GREEN/YELLOW/RED)
     of 6 core dashboard components.
     """
-    t310_status = reactive("GREEN")
-    r510_status = reactive("GREEN")
-    ollama_api_status = reactive("GREEN")
-    worker_status = reactive("GREEN")
-    postgres_status = reactive("GREEN")
-    queue_status = reactive("GREEN")
+    database_status = reactive("ONLINE")
+    worker_status = reactive("ONLINE")
+    ai_server_status = reactive("GREEN")
+    disk_health = reactive("NOMINAL")
+    memory_health = reactive("NOMINAL")
+    filesystem_state = reactive("READ-WRITE")
 
     current_theme = reactive("matrix-green")
 
@@ -27,24 +27,68 @@ class WatchdogPanel(Static):
         warning = theme["warning"]
         error = theme["error"]
 
-        content = Text()
-        content.append("\n Subsystem Diagnostics:\n\n", style=f"bold {theme['primary']}")
-
-        def append_row(label: str, status: str):
-            content.append(f"  {label.ljust(17)}", style="white")
-            if status == "RED":
-                content.append("🔴 RED", style=f"bold {error}")
-            elif status == "YELLOW":
-                content.append("🟡 YELLOW", style=f"bold {warning}")
+        def get_status_str_and_style(status: str) -> (str, str):
+            status_upper = status.upper().strip()
+            if status_upper in ("GREEN", "NOMINAL", "ONLINE", "READ-WRITE", "RW"):
+                return status, healthy
+            elif status_upper in ("YELLOW", "WARNING", "DEGRADED"):
+                return status, warning
             else:
-                content.append("🟢 GREEN", style=f"bold {healthy}")
-            content.append("\n")
+                return status, error
 
-        append_row("T310 Status", self.t310_status)
-        append_row("R510 Status", self.r510_status)
-        append_row("Ollama API", self.ollama_api_status)
-        append_row("Bitcoin Worker", self.worker_status)
-        append_row("PostgreSQL", self.postgres_status)
-        append_row("Queue Progress", self.queue_status)
+        content = Text()
+        width = self.size.width if self.size.width > 0 else 40
+
+        if width >= 36:
+            # Layout A: Wide (3 rows)
+            status, style = get_status_str_and_style(self.database_status)
+            content.append(" Database: ", style="white")
+            content.append(f"{status:<8}", style=style)
+            
+            status, style = get_status_str_and_style(self.worker_status)
+            content.append(" | Worker: ", style="white")
+            content.append(f"{status}\n", style=style)
+
+            status, style = get_status_str_and_style(self.ai_server_status)
+            content.append(" AI Serv:  ", style="white")
+            content.append(f"{status:<8}", style=style)
+            
+            status, style = get_status_str_and_style(self.disk_health)
+            content.append(" | Disk:   ", style="white")
+            content.append(f"{status}\n", style=style)
+
+            status, style = get_status_str_and_style(self.memory_health)
+            content.append(" Memory:   ", style="white")
+            content.append(f"{status:<8}", style=style)
+            
+            status, style = get_status_str_and_style(self.filesystem_state)
+            fs_lbl = "RW" if "WRITE" in status.upper() else "RO"
+            content.append(" | FS:     ", style="white")
+            content.append(f"{fs_lbl}\n", style=style)
+        else:
+            # Layout B: Narrow (6 rows)
+            status, style = get_status_str_and_style(self.database_status)
+            content.append(" Database: ", style="white")
+            content.append(f"{status}\n", style=style)
+
+            status, style = get_status_str_and_style(self.worker_status)
+            content.append(" Worker:   ", style="white")
+            content.append(f"{status}\n", style=style)
+
+            status, style = get_status_str_and_style(self.ai_server_status)
+            content.append(" AI Serv:  ", style="white")
+            content.append(f"{status}\n", style=style)
+
+            status, style = get_status_str_and_style(self.disk_health)
+            content.append(" Disk:     ", style="white")
+            content.append(f"{status}\n", style=style)
+
+            status, style = get_status_str_and_style(self.memory_health)
+            content.append(" Memory:   ", style="white")
+            content.append(f"{status}\n", style=style)
+
+            status, style = get_status_str_and_style(self.filesystem_state)
+            content.append(" FS State: ", style="white")
+            content.append(f"{status}\n", style=style)
 
         return content

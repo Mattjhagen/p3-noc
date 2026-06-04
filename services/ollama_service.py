@@ -37,12 +37,27 @@ class OllamaService:
             "latency": "0s",
             "status": "OFFLINE",
             "requests": 0,
-            "failures": 0
+            "failures": 0,
+            "configured_model": self.model_config,
+            "loaded_model": "None"
         }
 
         # Check connection status
         status = self.check_ollama_status()
         stats["status"] = status
+
+        if status == "ONLINE":
+            try:
+                res = requests.get(f"{self.url}/api/ps", timeout=1.0)
+                if res.status_code == 200:
+                    models = res.json().get("models", [])
+                    if models:
+                        loaded = [m.get("name", m.get("model", "Unknown")) for m in models]
+                        stats["loaded_model"] = ", ".join(loaded)
+                    else:
+                        stats["loaded_model"] = "None"
+            except Exception:
+                stats["loaded_model"] = "None"
 
         # Query database for runtime stats
         conn = None

@@ -1064,12 +1064,23 @@ class P3NocApp(App):
         try:
             ollama_panel = self.query_one(OllamaPanel)
             ollama_panel.status_str = ollama_stats["status"]
-            ollama_panel.model_name = ollama_stats["model"]
+            ollama_panel.configured_model = ollama_stats.get("configured_model", "N/A")
+            ollama_panel.loaded_model = ollama_stats.get("loaded_model", "None")
             ollama_panel.server_host = ollama_stats["server"]
-            ollama_panel.latency_sec = float(ollama_stats["latency"].replace("s", "")) if ollama_stats["latency"] != "N/A" else 0.0
+            lat_str = ollama_stats.get("latency", "0s").replace("s", "")
+            ollama_panel.latency_sec = float(lat_str) if lat_str != "N/A" and lat_str != "" else 0.0
             ollama_panel.failures_count = ollama_stats["failures"]
             ollama_panel.requests_count = ollama_stats["requests"]
-            self.ollama_model = ollama_stats["model"]
+            self.ollama_model = ollama_stats.get("loaded_model", OLLAMA_MODEL)
+        except Exception:
+            pass
+
+        # Update SystemPanel status fields
+        try:
+            system_panel = self.query_one(SystemPanel)
+            system_panel.worker_status = "ONLINE" if worker else "OFFLINE"
+            system_panel.db_status = "ONLINE" if db else "OFFLINE"
+            system_panel.fs_status = "READ-ONLY" if fs_readonly else "READ-WRITE"
         except Exception:
             pass
 
@@ -1112,14 +1123,37 @@ class P3NocApp(App):
             latest_analysis = self.db_service.get_latest_analysis()
             oldest_age = self.db_service.get_oldest_processing_age()
             
+            # Fetch last query age
+            last_time = self.db_service.get_last_analysis_time()
+            last_query_age_str = "N/A"
+            if last_time:
+                import datetime
+                if last_time.tzinfo is not None:
+                    diff = datetime.datetime.now(last_time.tzinfo) - last_time
+                else:
+                    diff = datetime.datetime.now() - last_time
+                seconds = int(diff.total_seconds())
+                if seconds < 0:
+                    seconds = 0
+                if seconds < 60:
+                    last_query_age_str = f"{seconds}s ago"
+                elif seconds < 3600:
+                    last_query_age_str = f"{seconds // 60}m ago"
+                elif seconds < 86400:
+                    last_query_age_str = f"{seconds // 3600}h ago"
+                else:
+                    last_query_age_str = f"{seconds // 86400}d ago"
+            else:
+                last_query_age_str = "Never"
+
             self.app.call_from_thread(
                 self._update_db_metrics_ui,
-                queue_counts, throughput, processed_today, risk_history, latest_articles, latest_analysis, oldest_age
+                queue_counts, throughput, processed_today, risk_history, latest_articles, latest_analysis, oldest_age, last_query_age_str
             )
         except Exception:
             pass
 
-    def _update_db_metrics_ui(self, queue_counts, throughput, processed_today, risk_history, latest_articles, latest_analysis, oldest_age):
+    def _update_db_metrics_ui(self, queue_counts, throughput, processed_today, risk_history, latest_articles, latest_analysis, oldest_age, last_query_age_str="N/A"):
         self.oldest_processing_age = oldest_age
         # Update System counts
         try:
@@ -1128,6 +1162,21 @@ class P3NocApp(App):
             system_panel.processing_count = queue_counts["processing"]
             system_panel.completed_count = queue_counts["completed"]
             system_panel.failed_count = queue_counts["failed"]
+        except Exception:
+            pass
+
+        # Update Ollama panel queue state & last query age
+        try:
+            ollama_panel = self.query_one(OllamaPanel)
+            ollama_panel.last_query_age_str = last_query_age_str
+            ollama_panel.active_requests = queue_counts["processing"]
+            
+            if queue_counts["processing"] > 0:
+                ollama_panel.queue_state = "PROCESSING"
+            elif queue_counts["pending"] > 0:
+                ollama_panel.queue_state = "PENDING"
+            else:
+                ollama_panel.queue_state = "IDLE"
         except Exception:
             pass
 
@@ -2149,6 +2198,8 @@ class P3NocApp(App):
             ai_panel.ping_latency = res["ping_latency"]
             ai_panel.ssh_status = "ONLINE" if res["ssh_ok"] else "OFFLINE"
             ai_panel.ollama_status = "ONLINE" if res["ollama_ok"] else "OFFLINE"
+            ai_panel.installed_models = res.get("installed_models", [])
+            ai_panel.loaded_models = res.get("loaded_models", [])
             if res["status"] in ("GREEN", "YELLOW"):
                 from datetime import datetime
                 ai_panel.last_success = datetime.fromtimestamp(res["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
@@ -2317,35 +2368,40 @@ class P3NocApp(App):
 
     def run_logo_flash_timer(self):
         """Runs every 250ms to update logo flashing status and System Watchdog values."""
-        t310 = "RED" if (self.disk_percent > 95.0 or self.fs_readonly or self.ipmi_fault or self.raid_failure) else "GREEN"
+        # Determine the watchdog statuses
+        database_status = "ONLINE" if self.db_online else "OFFLINE"
+        worker_status = "ONLINE" if self.worker_online else "OFFLINE"
+        ai_server_status = self.ai_server_status # GREEN / YELLOW / RED
         
-        if self.ai_server_status == "RED":
-            r510 = "RED" if self.ai_server_is_critical else "YELLOW"
+        # Disk Health
+        if self.disk_percent > 90.0:
+            disk_health = "CRITICAL"
+        elif self.disk_percent > 75.0:
+            disk_health = "WARNING"
         else:
-            r510 = "RED" if self.ai_server_critical_active else "GREEN"
+            disk_health = "NOMINAL"
             
-        if not self.ollama_online:
-            if self.ollama_is_critical:
-                ollama_api = "RED"
-            elif self.ai_server_tags_first_fail is not None and (time.time() - self.ai_server_tags_first_fail > 60.0):
-                ollama_api = "RED"
-            else:
-                ollama_api = "YELLOW"
+        # Memory (RAM) Health
+        import psutil
+        ram_percent = psutil.virtual_memory().percent
+        if ram_percent > 90.0:
+            memory_health = "CRITICAL"
+        elif ram_percent > 75.0:
+            memory_health = "WARNING"
         else:
-            ollama_api = "GREEN"
+            memory_health = "NOMINAL"
             
-        worker = "GREEN" if self.worker_online else "RED"
-        postgres = "GREEN" if self.db_online else "RED"
-        queue = "RED" if self.oldest_processing_age > 15.0 else "GREEN"
+        # Filesystem state
+        fs_state = "READ-ONLY" if self.fs_readonly else "READ-WRITE"
 
         try:
             w = self.query_one(WatchdogPanel)
-            w.t310_status = t310
-            w.r510_status = r510
-            w.ollama_api_status = ollama_api
-            w.worker_status = worker
-            w.postgres_status = postgres
-            w.queue_status = queue
+            w.database_status = database_status
+            w.worker_status = worker_status
+            w.ai_server_status = ai_server_status
+            w.disk_health = disk_health
+            w.memory_health = memory_health
+            w.filesystem_state = fs_state
         except Exception:
             pass
 

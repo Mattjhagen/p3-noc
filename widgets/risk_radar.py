@@ -21,18 +21,13 @@ class RiskRadar(Static):
     def on_mount(self):
         self.border_title = "RISK RADAR"
 
-    def render(self) -> Align:
+    def render(self) -> Text:
         theme = THEME_COLORS.get(self.current_theme, THEME_COLORS["matrix-green"])
         primary = theme["primary"]
-        muted = theme["muted"]
         healthy = theme["healthy"]
         warning = theme["warning"]
         error = theme["error"]
 
-        # Color mapping for risk dial:
-        # 0-33 = Green
-        # 34-66 = Yellow
-        # 67-100 = Red
         if self.risk_score <= 33:
             dial_color = healthy
         elif self.risk_score <= 66:
@@ -40,38 +35,25 @@ class RiskRadar(Static):
         else:
             dial_color = error
 
-        content = Text()
-        content.append("\n")
-        
-        # Draw dynamic ASCII circle
-        dial_lines = [
-            f"       , - ~ ~ ~ - ,       ",
-            f"   , '               ' ,   ",
-            f"  ,                     ,  ",
-            f" ,         [bold {dial_color}]{self.risk_score:>3}/100[/bold {dial_color}]        , ",
-            f"  ,                     ,  ",
-            f"   ,                 , '   ",
-            f"     ' - _ _ _ _ _ '       "
-        ]
-        
-        for line in dial_lines:
-            content.append("    ") # left padding
-            content.append(Text.from_markup(f"[{dial_color}]{line}[/{dial_color}]\n"))
-            
-        content.append("\n")
-        
-        # Details section
-        def add_detail(label: str, val_str: str, val_style: str):
-            content.append("  ")
-            content.append(f"{label:<12}", style="white")
-            content.append(f"{val_str}\n", style=val_style)
-
         # Sentiment mappings for display
         sentiment_label = self.sentiment_str.capitalize()
         sent_style = healthy if "pos" in self.sentiment_str.lower() else (error if "neg" in self.sentiment_str.lower() else "white")
-        
-        add_detail("Sentiment:", f"{sentiment_label} ({self.sentiment_score:+.2f})", sent_style)
-        add_detail("Importance:", f"{self.importance_score}/100", primary)
-        add_detail("Confidence:", self.confidence_str.upper(), primary)
 
-        return Align.center(content)
+        content = Text()
+        
+        # Line 1
+        content.append("  .-~-.  ", style=dial_color)
+        content.append(" Sent: ", style="white")
+        content.append(f"{sentiment_label} ({self.sentiment_score:+.2f})\n", style=sent_style)
+
+        # Line 2
+        content.append(f" ( {self.risk_score:>3} ) ", style=dial_color)
+        content.append(" Imp:  ", style="white")
+        content.append(f"{self.importance_score}/100\n", style=primary)
+
+        # Line 3
+        content.append("  '-~-'  ", style=dial_color)
+        content.append(" Conf: ", style="white")
+        content.append(f"{self.confidence_str.upper()}\n", style=primary)
+
+        return content

@@ -5,77 +5,75 @@ from config.themes import THEME_COLORS
 
 class OllamaPanel(Static):
     """
-    Displays live Ollama inference statistics and server health details.
+    OLLAMA Panel.
+    Displays live Ollama endpoint health (Online/Offline), configured model,
+    loaded model, response time, last query age, active requests, and queue state.
     """
-    model_name = reactive("phi3:mini")
-    server_host = reactive("r510")
+    status_str = reactive("OFFLINE")
+    configured_model = reactive("N/A")
+    loaded_model = reactive("N/A")
     latency_sec = reactive(0.0)
-    failures_count = reactive(0)
-    status_str = reactive("ONLINE")
-    requests_count = reactive(0)
-    context_limit = reactive(40960)
+    last_query_age_str = reactive("N/A")
+    active_requests = reactive(0)
+    queue_state = reactive("IDLE")
+    server_host = reactive("r510")
     
     current_theme = reactive("matrix-green")
-    trend_str = reactive("")
 
     def on_mount(self):
         self.border_title = "OLLAMA"
 
-    def watch_latency_sec(self, old_val: float, new_val: float) -> None:
-        """Textual watcher to set latency trend indicators."""
-        if old_val > 0.0:
-            if new_val < old_val:
-                self.trend_str = "↑ improving"
-            elif new_val > old_val:
-                self.trend_str = "↓ degrading"
-            else:
-                self.trend_str = ""
-
     def render(self) -> Text:
         theme = THEME_COLORS.get(self.current_theme, THEME_COLORS["matrix-green"])
         primary = theme["primary"]
-        muted = theme["muted"]
         accent = theme["accent"]
+        healthy = theme["healthy"]
         warning = theme["warning"]
         error = theme["error"]
-        healthy = theme["healthy"]
+
+        status_color = healthy if self.status_str == "ONLINE" else error
+        latency_val_str = f"{self.latency_sec:.1f}s" if self.latency_sec > 0.0 else "N/A"
+        state = self.queue_state.upper().strip()
+        state_color = healthy if state == "IDLE" else (warning if state == "PENDING" else error)
 
         content = Text()
-        content.append("\n Server Status:\n\n", style=f"bold {primary}")
 
-        # Model name
-        content.append(f"  Model:    ", style="white")
-        content.append(f"{self.model_name}\n", style=accent)
+        width = self.size.width if self.size.width > 0 else 40
 
-        # Host
-        content.append(f"  Server:   ", style="white")
-        content.append(f"{self.server_host}\n", style=muted)
+        if width >= 36:
+            # Layout A: Wide (3 rows)
+            content.append(" Status: ", style="white")
+            content.append(f"{self.status_str or 'OFFLINE':<8}", style=status_color)
+            content.append(" | Configured: ", style="white")
+            content.append(f"{self.configured_model or 'N/A'}\n", style=accent)
 
-        # Latency
-        content.append(f"  Latency:  ", style="white")
-        latency_val_str = f"{self.latency_sec:.1f}s"
-        content.append(f"{latency_val_str:<8}", style=warning)
-        if self.trend_str:
-            trend_color = healthy if "improving" in self.trend_str else error
-            content.append(f" {self.trend_str}", style=trend_color)
-        content.append("\n")
+            content.append(" Loaded: ", style="white")
+            content.append(f"{self.loaded_model or 'None':<8}", style=accent)
+            content.append(" | Latency:    ", style="white")
+            content.append(f"{latency_val_str}\n", style=warning)
 
-        # Requests
-        content.append(f"  Requests: ", style="white")
-        content.append(f"{self.requests_count}\n", style=healthy)
+            content.append(" Last Q: ", style="white")
+            content.append(f"{self.last_query_age_str or 'N/A':<8}", style=accent)
+            content.append(" | Queue:      ", style="white")
+            content.append(f"{state}\n", style=state_color)
+        else:
+            # Layout B: Narrow (6 rows)
+            content.append(" Status: ", style="white")
+            content.append(f"{self.status_str or 'OFFLINE'}\n", style=status_color)
 
-        # Failures
-        content.append(f"  Failures: ", style="white")
-        fail_style = error if self.failures_count > 0 else healthy
-        content.append(f"{self.failures_count}\n", style=fail_style)
+            content.append(" Configured: ", style="white")
+            content.append(f"{self.configured_model or 'N/A'}\n", style=accent)
 
-        # Context
-        content.append(f"  Context:  ", style="white")
-        content.append(f"{self.context_limit}\n", style=accent)
+            content.append(" Loaded: ", style="white")
+            content.append(f"{self.loaded_model or 'None'}\n", style=accent)
 
-        # Status
-        content.append(f"  Status:   ", style="white")
-        status_color = healthy if self.status_str == "ONLINE" else error
-        content.append(f"{self.status_str}\n", style=f"bold {status_color}")
+            content.append(" Latency: ", style="white")
+            content.append(f"{latency_val_str}\n", style=warning)
+
+            content.append(" Last Q: ", style="white")
+            content.append(f"{self.last_query_age_str or 'N/A'}\n", style=accent)
+
+            content.append(" Queue: ", style="white")
+            content.append(f"{state}\n", style=state_color)
 
         return content

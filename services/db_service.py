@@ -533,3 +533,18 @@ class DBService:
             if conn:
                 conn.close()
 
+    def get_last_analysis_time(self):
+        """Get the created_at timestamp of the most recent analysis version."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT created_at FROM analysis_versions ORDER BY created_at DESC LIMIT 1;")
+                row = cur.fetchone()
+                return row[0] if row else None
+        except Exception:
+            return None
+        finally:
+            if conn:
+                conn.close()
+

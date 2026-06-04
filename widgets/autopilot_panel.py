@@ -30,47 +30,41 @@ class AutopilotPanel(Static):
         healthy = theme["healthy"]
 
         content = Text()
-        content.append("\n Automation Brain:\n\n", style=f"bold {primary}")
-
-        # Status row
-        content.append("  Status:  ", style="white")
+        
+        # Line 1: STATUS & HEALTH
+        content.append(" Status:  ", style="white")
         if "LOCKED" in self.status_str.upper():
             status_style = f"bold {error} reverse"
         elif "SAFE" in self.status_str.upper():
             status_style = f"bold {warning}"
         else:
             status_style = f"bold {healthy}"
-        content.append(f"{self.status_str}\n", style=status_style)
-
-        # Health score
-        content.append("  Health:  ", style="white")
+        content.append(f"{self.status_str:<7} ", style=status_style)
+        
+        content.append("| Health: ", style="white")
         score_style = healthy if self.health_score > 90 else (warning if self.health_score > 50 else error)
         content.append(f"{self.health_score}/100\n", style=f"bold {score_style}")
 
-        # Uptime
-        content.append("  Uptime:  ", style="white")
-        content.append(f"{self.uptime_days} Days\n", style=accent)
+        # Line 2: UPTIME & ACTIONS TODAY
+        content.append(" Uptime:  ", style="white")
+        content.append(f"{self.uptime_days:<6}D ", style=accent)
+        content.append("| Actions:", style="white")
+        content.append(f" {self.actions_today} Today\n", style=healthy if self.actions_today == 0 else warning)
 
-        # Actions today
-        content.append("  Actions: ", style="white")
-        content.append(f"{self.actions_today} Today\n\n", style=healthy if self.actions_today == 0 else warning)
-
-        # Last Auto Actions sub-list
-        content.append("  LAST AUTO ACTIONS:\n", style=f"bold {primary}")
+        # Line 3: LAST AUTO ACTION
+        content.append(" Last:    ", style="white")
         if self.last_actions_list:
-            for act in self.last_actions_list[:4]:
-                action = act.get("action_taken", "Unknown Action")
-                # Format: "Restart Worker"
-                # Strip underscores
-                action_clean = action.replace("_", " ").title()
-                result = act.get("result", "SUCCESS")
-                
-                icon = "✓" if result == "SUCCESS" else "✗"
-                res_color = healthy if result == "SUCCESS" else error
-                
-                content.append(f"   {icon} ", style=f"bold {res_color}")
-                content.append(f"{action_clean}\n", style="white")
+            act = self.last_actions_list[0]
+            action = act.get("action_taken", "Unknown Action")
+            action_clean = action.replace("_", " ").title()
+            if len(action_clean) > 15:
+                action_clean = action_clean[:12] + "..."
+            result = act.get("result", "SUCCESS")
+            res_color = healthy if result == "SUCCESS" else error
+            content.append(f"{action_clean} ", style="white")
+            content.append(f"({result})", style=res_color)
         else:
-            content.append("   - No self-healing actions taken -\n", style=muted)
+            content.append("None", style=muted)
+        content.append("\n")
 
         return content

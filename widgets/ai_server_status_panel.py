@@ -14,6 +14,8 @@ class AiServerStatusPanel(Static):
     ssh_status = reactive("OFFLINE")
     ollama_status = reactive("OFFLINE")
     last_success = reactive("N/A")
+    installed_models = reactive([])
+    loaded_models = reactive([])
     current_theme = reactive("matrix-green")
 
     def on_mount(self):
@@ -27,30 +29,68 @@ class AiServerStatusPanel(Static):
         warning = theme["warning"]
         error = theme["error"]
 
-        content = Text()
-        content.append("\n Remote Host Details:\n\n", style=f"bold {primary}")
-        
-        content.append("  Host:   ", style="white")
-        content.append(f"{self.host}\n", style=accent)
-        
-        content.append("  IP:     ", style="white")
-        content.append(f"{self.ip}\n", style=accent)
-        
-        content.append("  Ping:   ", style="white")
-        if self.ping_latency > 0:
-            content.append(f"{self.ping_latency:.1f} ms\n", style=healthy)
-        else:
-            content.append("TIMEOUT\n", style=error)
-            
-        content.append("  SSH:    ", style="white")
+        ping_val = f"{self.ping_latency:.1f}ms" if self.ping_latency > 0 else "TIMEOUT"
+        ping_style = healthy if self.ping_latency > 0 else error
         ssh_style = healthy if self.ssh_status == "ONLINE" else error
-        content.append(f"{self.ssh_status}\n", style=ssh_style)
-        
-        content.append("  Ollama: ", style="white")
         ollama_style = healthy if self.ollama_status == "ONLINE" else error
-        content.append(f"{self.ollama_status}\n", style=ollama_style)
+
+        # Build models summary
+        models_list = []
+        if self.loaded_models:
+            models_list.append(f"Loaded: {','.join(self.loaded_models)}")
+        if self.installed_models:
+            models_list.append(f"Inst: {','.join(self.installed_models)}")
+        models_summary = "; ".join(models_list) if models_list else "None"
         
-        content.append("  Checked:", style="white")
-        content.append(f" {self.last_success}\n", style="cyan")
+        content = Text()
+        width = self.size.width if self.size.width > 0 else 40
+
+        if width >= 36:
+            # Layout A: Wide (4 rows)
+            content.append(" Host: ", style="white")
+            content.append(f"{self.host or 'Unknown':<9}", style=accent)
+            content.append(" | Ping:   ", style="white")
+            content.append(f"{ping_val}\n", style=ping_style)
+
+            content.append(" SSH:  ", style="white")
+            content.append(f"{self.ssh_status or 'OFFLINE':<9}", style=ssh_style)
+            content.append(" | Ollama: ", style="white")
+            content.append(f"{self.ollama_status or 'OFFLINE'}\n", style=ollama_style)
+
+            # limit length of models_summary to prevent wrapping
+            models_summary_disp = models_summary
+            if len(models_summary_disp) > 22:
+                models_summary_disp = models_summary_disp[:19] + "..."
+            content.append(" Models: ", style="white")
+            content.append(f"{models_summary_disp}\n", style=accent)
+
+            content.append(" Seen:   ", style="white")
+            # Show just time part of seen string to fit
+            seen_time = self.last_success
+            if len(seen_time) > 10:
+                seen_time = seen_time.split(" ")[-1]
+            content.append(f"{seen_time or 'Never'}\n", style="cyan")
+        else:
+            # Layout B: Narrow (6 rows)
+            content.append(" Host: ", style="white")
+            content.append(f"{self.host or 'Unknown'}\n", style=accent)
+
+            content.append(" Ping: ", style="white")
+            content.append(f"{ping_val}\n", style=ping_style)
+
+            content.append(" SSH:  ", style="white")
+            content.append(f"{self.ssh_status or 'OFFLINE'}\n", style=ssh_style)
+
+            content.append(" Ollama: ", style="white")
+            content.append(f"{self.ollama_status or 'OFFLINE'}\n", style=ollama_style)
+
+            models_summary_disp = models_summary
+            if len(models_summary_disp) > 22:
+                models_summary_disp = models_summary_disp[:19] + "..."
+            content.append(" Models: ", style="white")
+            content.append(f"{models_summary_disp}\n", style=accent)
+
+            content.append(" Seen: ", style="white")
+            content.append(f"{self.last_success or 'Never'}\n", style="cyan")
 
         return content

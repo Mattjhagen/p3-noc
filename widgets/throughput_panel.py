@@ -30,31 +30,24 @@ class ThroughputPanel(Static):
         healthy = theme["healthy"]
 
         content = Text()
-        content.append("\n Performance:\n\n", style=f"bold {primary}")
+        
+        # Line 1: LAST HOUR & TODAY
+        content.append(" Hour: ", style="white")
+        content.append(f"{self.processed_last_hour:<6} ", style=healthy)
+        content.append("| Today:  ", style="white")
+        content.append(f"{self.processed_today:,}\n", style=healthy)
 
-        # Processed last hour
-        content.append(f"  Last Hour:", style="white")
-        content.append(f"{self.processed_last_hour:>8}\n", style=healthy)
+        # Line 2: AVG TIME & REMAINING
+        content.append(" Lat:  ", style="white")
+        content.append(f"{self.avg_time:.1f}s   ", style=accent)
+        content.append("| Remain: ", style="white")
+        content.append(f"{self.remaining}\n", style=warning)
 
-        # Processed today
-        content.append(f"  Today:    ", style="white")
-        content.append(f"{self.processed_today:>8,}\n", style=healthy)
-
-        # Avg processing latency
-        content.append(f"  Avg Time: ", style="white")
-        content.append(f"{f'{self.avg_time:.1f}s':>9}\n", style=accent)
-
-        # Queue remaining
-        content.append(f"  Remaining:", style="white")
-        content.append(f"{self.remaining:>8}\n", style=warning)
-
-        # ETA
-        content.append(f"  ETA:      ", style="white")
-        content.append(f"{self.eta_str:>9}\n", style="bold white")
-
-        # Worker Efficiency
+        # Line 3: ETA & EFFICIENCY
+        content.append(" ETA:  ", style="white")
+        content.append(f"{self.eta_str:<6} ", style="bold white")
+        content.append("| Eff:    ", style="white")
         eff_style = healthy if self.worker_efficiency >= 95.0 else (warning if self.worker_efficiency >= 85.0 else error)
-        content.append(f"  Efficiency:", style="white")
-        content.append(f"{f'{self.worker_efficiency:.1f}%':>8}\n", style=f"bold {eff_style}")
+        content.append(f"{self.worker_efficiency:.1f}%\n", style=f"bold {eff_style}")
 
         return content

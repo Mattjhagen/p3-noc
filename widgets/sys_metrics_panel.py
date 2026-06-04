@@ -88,34 +88,31 @@ class SysMetricsPanel(Static):
         healthy = theme["healthy"]
 
         content = Text()
-        content.append("\n Host Resource Utilization:\n\n", style=f"bold {primary}")
-
+        
         # CPU row
         cpu_bar = self._make_progress_bar(self.cpu_percent)
         cpu_style = error if self.cpu_percent > 85 else (warning if self.cpu_percent > 60 else healthy)
-        content.append("  CPU  ", style="white")
+        content.append(" CPU:  ", style="white")
         content.append(cpu_bar, style=cpu_style)
         content.append(f" {self.cpu_percent:>5.1f}%\n", style=cpu_style)
 
         # RAM row
         ram_bar = self._make_progress_bar(self.ram_percent)
         ram_style = error if self.ram_percent > 85 else (warning if self.ram_percent > 60 else healthy)
-        content.append("  RAM  ", style="white")
+        content.append(" RAM:  ", style="white")
         content.append(ram_bar, style=ram_style)
         content.append(f" {self.ram_percent:>5.1f}%\n", style=ram_style)
 
         # Disk row
         disk_bar = self._make_progress_bar(self.disk_percent)
         disk_style = error if self.disk_percent > 90 else (warning if self.disk_percent > 75 else healthy)
-        content.append("  Disk ", style="white")
+        content.append(" DISK: ", style="white")
         content.append(disk_bar, style=disk_style)
-        content.append(f" {self.disk_percent:>5.1f}%\n\n", style=disk_style)
+        content.append(f" {self.disk_percent:>5.1f}%\n", style=disk_style)
 
         # Network row
-        content.append("  Network Rate:\n", style="bold white")
-        content.append("    RX: ", style=muted)
-        content.append(f"{self.net_rx_str:<12}", style=accent)
-        content.append("TX: ", style=muted)
-        content.append(f"{self.net_tx_str}\n", style=accent)
+        content.append(" NET:  ", style="white")
+        content.append(f"RX: {self.net_rx_str:<10}", style=accent)
+        content.append(f"TX: {self.net_tx_str}\n", style=accent)
 
         return content

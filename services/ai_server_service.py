@@ -76,20 +76,60 @@ class AiServerService:
             logger.debug(f"Ollama port check failed for AI Server {self.ip}: {e}")
             return False
 
+    def get_installed_models(self) -> list:
+        """Fetch remote installed models from api/tags."""
+        try:
+            res = requests.get(f"http://{self.ip}:{self.ollama_port}/api/tags", timeout=1.0)
+            if res.status_code == 200:
+                models = res.json().get("models", [])
+                return [m.get("name", m.get("model", "Unknown")) for m in models]
+            return []
+        except Exception:
+            return []
+
+    def get_loaded_models(self) -> list:
+        """Fetch remote memory-loaded models from api/ps."""
+        try:
+            res = requests.get(f"http://{self.ip}:{self.ollama_port}/api/ps", timeout=1.0)
+            if res.status_code == 200:
+                models = res.json().get("models", [])
+                return [m.get("name", m.get("model", "Unknown")) for m in models]
+            return []
+        except Exception:
+            return []
+
     def perform_full_check(self) -> dict:
         """
         Executes ping, SSH, and Ollama checks.
         Computes overall status: GREEN, YELLOW, RED.
         """
         ping_ok, ping_lat = self.ping_host()
+        
+        # Fast path if ping fails to avoid long timeouts
+        if not ping_ok:
+            return {
+                "status": "RED",
+                "ping_ok": False,
+                "ping_latency": 0.0,
+                "ssh_ok": False,
+                "ollama_port_ok": False,
+                "ollama_ok": False,
+                "installed_models": [],
+                "loaded_models": [],
+                "timestamp": time.time()
+            }
+
         ssh_ok = self.verify_ssh()
         ollama_port_ok = self.verify_ollama_port()
         ollama_ok = self.verify_ollama()
 
-        # GREEN: R510 reachable, SSH reachable, Ollama reachable
-        # YELLOW: R510 reachable, SSH reachable, Ollama offline
-        # RED: R510 unreachable (or SSH unreachable)
-        if not ping_ok or not ssh_ok:
+        installed_models = []
+        loaded_models = []
+        if ollama_ok:
+            installed_models = self.get_installed_models()
+            loaded_models = self.get_loaded_models()
+
+        if not ssh_ok:
             status = "RED"
         elif not ollama_ok:
             status = "YELLOW"
@@ -99,9 +139,11 @@ class AiServerService:
         return {
             "status": status,
             "ping_ok": ping_ok,
-            "ping_latency": ping_lat if ping_ok else 0.0,
+            "ping_latency": ping_lat,
             "ssh_ok": ssh_ok,
             "ollama_port_ok": ollama_port_ok,
             "ollama_ok": ollama_ok,
+            "installed_models": installed_models,
+            "loaded_models": loaded_models,
             "timestamp": time.time()
         }

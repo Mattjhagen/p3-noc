@@ -22,22 +22,28 @@ class RunbookPanel(Static):
         accent = theme["accent"]
 
         content = Text()
-        content.append("\n Operational Runbooks:\n\n", style=f"bold {primary}")
+        
+        # Line 1: F6 & F9
+        content.append(" F6  ", style=f"bold {accent}")
+        content.append(f"{'Restart Wrk':<12}", style="white")
+        content.append(" | F9  ", style=f"bold {accent}")
+        content.append("Clear Stuck\n", style="white")
 
-        # List action entries
-        def add_action(key: str, desc: str):
-            content.append(f"  {key:<5}", style=f"bold {accent}")
-            content.append(f"{desc}\n", style="white")
+        # Line 2: F7 & F10
+        content.append(" F7  ", style=f"bold {accent}")
+        content.append(f"{'Restart Ing':<12}", style="white")
+        content.append(" | F10 ", style=f"bold {accent}")
+        ollama_lbl = "Restart [D]" if OLLAMA_REMOTE else "Restart LLM"
+        content.append(f"{ollama_lbl}\n", style="white")
 
-        add_action("F6", "Restart Worker service")
-        add_action("F7", "Restart RSS Ingest Timer")
-        add_action("F8", "Requeue Failed Queue Jobs")
-        add_action("F9", "Clear Stuck Processing (>15m)")
-        if OLLAMA_REMOTE:
-            add_action("F10", "Restart Ollama [DISABLED - REMOTE]")
-        else:
-            add_action("F10", "Restart Ollama Inference")
-        add_action("F11", "Warm LLM Model Cache")
-        add_action("F12", "Execute Full Health Recovery")
+        # Line 3: F8 & F11
+        content.append(" F8  ", style=f"bold {accent}")
+        content.append(f"{'Requeue Fail':<12}", style="white")
+        content.append(" | F11 ", style=f"bold {accent}")
+        content.append("Warm Cache\n", style="white")
+
+        # Line 4: F12
+        content.append(" F12 ", style=f"bold {accent}")
+        content.append("Execute Full Health Recovery\n", style="white")
 
         return content

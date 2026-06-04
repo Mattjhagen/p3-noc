@@ -36,16 +36,16 @@ class RiskTrendPanel(Static):
                 48, 42, 38, 36, 42, 48, 55, 62, 66, 62, 54, 46
             ]
 
-        # Grid is 6 rows high (0 to 5) by 24 cols wide
-        grid = [[" " for _ in range(24)] for _ in range(6)]
+        # Grid is 3 rows high (0 to 2) by 24 cols wide
+        grid = [[" " for _ in range(24)] for _ in range(3)]
 
         for c in range(24):
             val = history[c]
-            r = min(5, int(val / 20.0))
+            r = min(2, int(val / 34.0))
             
             if c < 23:
                 val_next = history[c + 1]
-                r_next = min(5, int(val_next / 20.0))
+                r_next = min(2, int(val_next / 34.0))
                 
                 if r_next > r:
                     grid[r][c] = "╯"
@@ -64,20 +64,16 @@ class RiskTrendPanel(Static):
 
         # Construct visual text
         content = Text()
-        content.append("\n Hourly Risk Averages:\n\n", style=f"bold {primary}")
 
         labels = [
             ("100", error),
-            (" 80", error),
-            (" 60", warning),
-            (" 40", healthy),
-            (" 20", healthy),
+            (" 50", warning),
             ("  0", healthy)
         ]
 
-        # Draw from top (row 5) to bottom (row 0)
-        for r in range(5, -1, -1):
-            label, lbl_style = labels[5 - r]
+        # Draw from top (row 2) to bottom (row 0)
+        for r in range(2, -1, -1):
+            label, lbl_style = labels[2 - r]
             if r == 0:
                 content.append(f"  {label} └", style=lbl_style)
             else:
@@ -93,7 +89,6 @@ class RiskTrendPanel(Static):
                     char_style = error
                     
                 char = grid[r][c]
-                # If row is 0 and char is empty, print axis line
                 if r == 0 and char == " ":
                     content.append("─", style=muted)
                 else:

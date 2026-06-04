@@ -51,150 +51,113 @@ class AlertPanel(Static):
         healthy = theme["healthy"]
         accent = theme["accent"]
 
-        content = Text()
+        # Ensure instance tracking variables exist
+        if not hasattr(self, "alert_timestamps"):
+            self.alert_timestamps = {}
+        if not hasattr(self, "last_alert_time"):
+            self.last_alert_time = "N/A"
+
+        # Gather active alerts
+        active_alerts = []
         
-        # 0. Check Autopilot Lockout
-        if self.autopilot_locked:
-            content.append("\n 🔴 AUTOPILOT LOCKED\n", style="bold reverse red")
-            content.append(" 🔴 MANUAL REVIEW REQUIRED\n\n", style="bold red")
-        else:
-            content.append("\n Active Alerts:\n\n", style=f"bold {primary}")
-
-        # AI Server Status Alert
-        if self.ai_server_status == "YELLOW":
-            content.append(" 🟡 AI SERVER DEGRADED (Ollama Offline)\n", style="bold yellow")
-        elif self.ai_server_status == "RED":
-            if self.ai_server_is_critical:
-                if self.ai_server_flash_toggle:
-                    content.append(" 🔴 CRITICAL: CHECK AI SERVER (R510) 🔴\n", style="bold white on red")
-                else:
-                    content.append(" 🔴 CRITICAL: CHECK AI SERVER (R510) 🔴\n", style="bold red on black")
-            else:
-                if self.ai_server_flash_toggle:
-                    content.append(" 🚨 ALERT: CHECK AI SERVER (R510) 🚨\n", style="bold white on red")
-                else:
-                    content.append(" 🚨 ALERT: CHECK AI SERVER (R510) 🚨\n", style="bold red")
-
-        # Render Startup failures if any exist
+        if not self.db_online:
+            active_alerts.append(("Database Offline", "CRITICAL"))
+        if not self.worker_active:
+            active_alerts.append(("Worker Offline", "CRITICAL"))
+        if not self.ingest_active:
+            active_alerts.append(("Ingest Offline", "CRITICAL"))
+        if not self.ollama_online or self.ollama_failures >= 3:
+            active_alerts.append(("Ollama Offline/Timeout", "CRITICAL"))
+        if self.ai_server_status == "RED":
+            active_alerts.append(("AI Server Connection Failed", "CRITICAL"))
+        elif self.ai_server_status == "YELLOW":
+            active_alerts.append(("AI Server Degraded", "WARNING"))
+        if self.env_ollama_model and self.active_ollama_model and self.env_ollama_model.lower() != self.active_ollama_model.lower():
+            active_alerts.append(("Model Mismatch", "WARNING"))
+        if self.latest_risk_score >= 80:
+            active_alerts.append((f"High Risk ({self.latest_risk_score})", "CRITICAL"))
+        elif self.latest_risk_score >= 50:
+            active_alerts.append((f"Elevated Risk ({self.latest_risk_score})", "WARNING"))
+        if self.worker_efficiency < 85.0:
+            active_alerts.append((f"Queue Failures High ({100.0 - self.worker_efficiency:.1f}%)", "CRITICAL"))
+        elif self.worker_efficiency < 95.0:
+            active_alerts.append((f"Queue Failures Elevated ({100.0 - self.worker_efficiency:.1f}%)", "WARNING"))
+        if self.failed_queue_count > 25:
+            active_alerts.append((f"Failed Queue Large ({self.failed_queue_count})", "CRITICAL"))
+        elif self.failed_queue_count > 10:
+            active_alerts.append((f"Failed Queue Elevated ({self.failed_queue_count})", "WARNING"))
+        if self.avg_time > 180.0:
+            active_alerts.append((f"Analysis Latency High ({self.avg_time:.1f}s)", "WARNING"))
         if self.startup_failures:
             for fail in self.startup_failures:
-                content.append(f" 🔴 STARTUP: {fail}\n", style="bold red")
-
-        # Render Predictive Anomaly Warnings
+                active_alerts.append((f"Startup: {fail}", "CRITICAL"))
         if self.predictive_alerts:
             for pred in self.predictive_alerts:
-                content.append(f" ⚠ TREND: {pred}\n", style="bold yellow reverse")
+                active_alerts.append((f"Predictive: {pred}", "WARNING"))
 
-        # 1. Model Mismatch (Model Drift check)
-        mismatch_active = False
-        if self.env_ollama_model and self.active_ollama_model:
-            if self.env_ollama_model.lower() != self.active_ollama_model.lower():
-                content.append(" ⚠ MODEL MISMATCH\n", style="bold reverse red")
-                mismatch_active = True
+        content = Text()
+        import time
 
-        # 2. Bitcoin Risk Score > 80
-        if self.latest_risk_score >= 80:
-            content.append(f" 🔴 Bitcoin Risk Score > 80 ({self.latest_risk_score})\n", style="bold red")
-        elif self.latest_risk_score >= 50:
-            content.append(f" 🟡 Bitcoin Risk Score Elevated ({self.latest_risk_score})\n", style="bold yellow")
+        if not active_alerts:
+            content.append("\n  ✔ No Active Alerts\n", style=f"bold {healthy}")
+            self.alert_timestamps = {}
+            self.last_alert_time = "N/A"
+            return content
 
-        # 3. Ollama Offline / Timeouts
-        if not self.ollama_online:
-            if OLLAMA_REMOTE:
-                content.append(" 🔴 REMOTE OLLAMA OFFLINE\n", style="bold red reverse")
-            else:
-                content.append(" 🔴 Ollama Server Offline\n", style="bold red")
-        elif self.ollama_failures >= 3:
-            if OLLAMA_REMOTE:
-                content.append(f" 🔴 REMOTE OLLAMA OFFLINE ({self.ollama_failures} fails)\n", style="bold red reverse")
-            else:
-                content.append(f" 🔴 Ollama Timeout Spike ({self.ollama_failures} fails)\n", style="bold red")
+        # Update timestamps for alerts
+        current_alert_names = set(name for name, sev in active_alerts)
+        now_str = time.strftime("%H:%M:%S")
+        added_any = False
+        for name, sev in active_alerts:
+            if name not in self.alert_timestamps:
+                self.alert_timestamps[name] = now_str
+                added_any = True
+        for name in list(self.alert_timestamps.keys()):
+            if name not in current_alert_names:
+                del self.alert_timestamps[name]
+        if added_any:
+            self.last_alert_time = now_str
 
-        # 4. Queue Failure Rate Rising
-        if self.worker_efficiency < 85.0:
-            content.append(f" 🔴 Queue Failure Rate Rising ({100.0 - self.worker_efficiency:.1f}% error)\n", style="bold red")
-        elif self.worker_efficiency < 95.0:
-            content.append(f" 🟡 Queue Failure Rate Rising ({100.0 - self.worker_efficiency:.1f}% error)\n", style="bold yellow")
+        alert_count = len(active_alerts)
+        has_critical = any(sev == "CRITICAL" for name, sev in active_alerts)
+        has_warning = any(sev == "WARNING" for name, sev in active_alerts)
+        highest_severity = "CRITICAL" if has_critical else ("WARNING" if has_warning else "INFO")
+        newest_alert = active_alerts[-1][0]
+        sev_color = error if highest_severity == "CRITICAL" else warning
 
-        # 5. Queue size alerts
-        if self.failed_queue_count > 25:
-            content.append(f" 🔴 Failed Queue > 25 ({self.failed_queue_count} items)\n", style="bold red")
-        elif self.failed_queue_count > 10:
-            content.append(f" 🟡 Failed Queue > 10 ({self.failed_queue_count} items)\n", style="bold yellow")
+        width = self.size.width if self.size.width > 0 else 40
 
-        # 6. Ingest / Worker offline alerts
-        if not self.ingest_active:
-            content.append(" 🔴 Ingest Offline\n", style="bold red")
+        if width >= 36:
+            # Layout A: Wide (3 rows)
+            content.append(" Alert Count: ", style="white")
+            content.append(f"{alert_count:<3}", style=f"bold {sev_color}")
+            content.append(" | Sev: ", style="white")
+            content.append(f"{highest_severity}\n", style=f"bold {sev_color}")
+
+            # truncate newest alert to fit
+            newest_disp = newest_alert
+            if len(newest_disp) > 20:
+                newest_disp = newest_disp[:17] + "..."
+            content.append(" Newest Alert: ", style="white")
+            content.append(f"{newest_disp}\n", style=accent)
+
+            content.append(" Last Alert:   ", style="white")
+            content.append(f"{self.last_alert_time}\n", style=accent)
         else:
-            content.append(" 🟢 Ingest Running Normally\n", style="green")
+            # Layout B: Narrow (4 rows)
+            content.append(" Alert Count: ", style="white")
+            content.append(f"{alert_count}\n", style=f"bold {sev_color}")
 
-        if not self.worker_active:
-            content.append(" 🔴 Worker Offline\n", style="bold red")
+            content.append(" Sev:   ", style="white")
+            content.append(f"{highest_severity}\n", style=f"bold {sev_color}")
 
-        if not self.db_online:
-            content.append(" 🔴 Database Offline\n", style="bold red")
+            newest_disp = newest_alert
+            if len(newest_disp) > 20:
+                newest_disp = newest_disp[:17] + "..."
+            content.append(" Newest: ", style="white")
+            content.append(f"{newest_disp}\n", style=accent)
 
-        # 7. Average analysis duration warning
-        if self.avg_time > 180.0:
-            content.append(f" 🟡 Average Analysis > 180s ({self.avg_time:.1f}s)\n", style="bold yellow")
-
-        # --- Smart Recommendations Section ---
-        content.append("\n RECOMMENDED ACTIONS:\n", style=f"bold {primary}")
-        recommendations = []
-
-        # AI Server Recommended Actions
-        if self.ai_server_status == "RED":
-            if self.ai_server_is_critical:
-                recommendations.append(("🚨 AI Server Offline > 5m", "Check R510 power/network link"))
-            else:
-                recommendations.append(("🔴 AI Server Unreachable", "Verify R510 ping & SSH service"))
-        elif self.ai_server_status == "YELLOW":
-            recommendations.append(("🟡 AI Server Degraded", "Check remote Ollama service manually"))
-
-        # If locked, recommend unlocking
-        if self.autopilot_locked:
-            recommendations.append(("🔴 Autopilot Locked Out", "Run F12 Full Health Recovery to Unlock"))
-            
-        # Rule 1: Ollama Offline
-        if not self.ollama_online:
-            if OLLAMA_REMOTE:
-                recommendations.append(("🔴 Remote Ollama Offline", "Check R510 Remote Host status"))
-            else:
-                recommendations.append(("🔴 Ollama Offline", "Run F10 Restart Ollama"))
-        
-        # Rule 2: Memory Pressure
-        if self.host_ram_percent > 90.0:
-            if OLLAMA_REMOTE:
-                recommendations.append(("🔴 Memory Pressure (>90% RAM)", "Check host services"))
-            else:
-                recommendations.append(("🔴 Memory Pressure (>90% RAM)", "Run F10 Restart Ollama"))
-
-        # Rule 3: Worker Offline
-        if not self.worker_active:
-            recommendations.append(("🟡 Worker Not Running", "Run F6 Restart Worker"))
-
-        # Rule 4: Ollama Slow
-        if self.avg_time > 120.0:
-            recommendations.append(("🔴 Ollama Timeout Spike", "Run F11 Warm Model"))
-
-        # Rule 5: Queue Jam
-        if self.queue_processing_count > 5:
-            recommendations.append(("🟡 Processing Stuck", "Run F9 Clear Stuck"))
-
-        # Rule 6: Backlog
-        if self.failed_queue_count > 20:
-            recommendations.append(("🔴 Failed Queue > 20", "Run F8 Requeue Failed"))
-
-        # Rule 7: Model Mismatch
-        if mismatch_active:
-            recommendations.append(("⚠ Model Mismatch Active", "Configure env or Warm Cache"))
-
-        # Render recommendations
-        if recommendations:
-            for condition, action in recommendations:
-                content.append(f" {condition}\n", style="bold white")
-                content.append(f"  → {action}\n", style=accent)
-        else:
-            content.append(" 🟢 No active incidents detected\n", style="green")
+            content.append(" Last:   ", style="white")
+            content.append(f"{self.last_alert_time}\n", style=accent)
 
         return content
