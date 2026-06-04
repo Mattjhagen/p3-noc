@@ -10,6 +10,7 @@ class DBService:
     def __init__(self):
         self.db_url = DATABASE_URL
         self.init_operations_log_table()
+        self.init_briefing_cache_table()
 
     def init_operations_log_table(self):
         """Create operations_log table if it does not exist."""
@@ -429,6 +430,105 @@ class DBService:
                 return float(val) if val is not None else 0.0
         except Exception:
             return 0.0
+        finally:
+            if conn:
+                conn.close()
+
+    def init_briefing_cache_table(self):
+        """Create briefing_cache table if it does not exist."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS briefing_cache (
+                        id SERIAL PRIMARY KEY,
+                        market_state VARCHAR(50) NOT NULL,
+                        confidence VARCHAR(10) NOT NULL,
+                        briefing_text TEXT NOT NULL,
+                        generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to initialize briefing_cache table: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    def save_briefing_to_cache(self, market_state: str, confidence: str, briefing_text: str) -> bool:
+        """Persist generated AI briefing to database cache."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO briefing_cache (market_state, confidence, briefing_text, generated_at)
+                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP);
+                """, (market_state, confidence, briefing_text))
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save briefing to cache: {e}")
+            if conn:
+                conn.rollback()
+            return False
+        finally:
+            if conn:
+                conn.close()
+
+    def get_latest_cached_briefing(self) -> dict:
+        """Retrieve the most recent AI briefing from PostgreSQL cache."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT market_state, confidence, briefing_text, generated_at
+                    FROM briefing_cache
+                    ORDER BY generated_at DESC
+                    LIMIT 1;
+                """)
+                return cur.fetchone()
+        except Exception as e:
+            logger.error(f"Failed to fetch latest cached briefing: {e}")
+            return None
+        finally:
+            if conn:
+                conn.close()
+
+    def get_latest_analysis_id(self) -> int:
+        """Get the max ID in analyses to track new arrivals."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT MAX(id) FROM analyses;")
+                val = cur.fetchone()[0]
+                return val if val is not None else 0
+        except Exception:
+            return 0
+        finally:
+            if conn:
+                conn.close()
+
+    def get_latest_analyzed_articles_for_briefing(self, limit=10) -> list:
+        """Get latest articles and analyses for briefing Ollama context."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT a.title, an.sentiment, an.importance_score, an.summary
+                    FROM analyses an
+                    JOIN articles a ON an.article_id = a.id
+                    ORDER BY an.created_at DESC
+                    LIMIT %s;
+                """, (limit,))
+                return cur.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to fetch analyzed articles for briefing: {e}")
+            return []
         finally:
             if conn:
                 conn.close()

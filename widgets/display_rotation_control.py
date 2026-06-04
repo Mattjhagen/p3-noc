@@ -15,10 +15,27 @@ class DisplayRotationControl(Static):
     last_switch_time = reactive("N/A")
     next_switch_str = reactive("00:00")
     current_theme = reactive("matrix-green")
+    is_readonly = reactive(False)
     
+    # Idle-aware screensaver system fields
+    pause_reason = reactive("None")
+    inactivity_timer_str = reactive("N/A")
+    next_auto_resume_str = reactive("N/A")
+    
+    def __init__(self, is_readonly=False, **kwargs):
+        super().__init__(**kwargs)
+        self.is_readonly = is_readonly
+        
     def on_mount(self):
         self.border_title = "DISPLAY ROTATION CONTROL"
         
+    def watch_status_str(self, old_value: str, new_value: str):
+        """Watch status_str to dynamically apply style classes."""
+        if "PAUSED" in new_value:
+            self.add_class("paused-panel")
+        else:
+            self.remove_class("paused-panel")
+            
     def render(self) -> Text:
         theme = THEME_COLORS.get(self.current_theme, THEME_COLORS["matrix-green"])
         primary = theme["primary"]
@@ -28,76 +45,46 @@ class DisplayRotationControl(Static):
         error = theme["error"]
         
         content = Text()
-        content.append("\n Remote T310 Monitor Status:\n\n", style=f"bold {primary}")
         
-        # Print current status values
-        content.append("  Status:   ", style="white")
-        if self.status_str == "RUNNING":
-            content.append("RUNNING\n", style=healthy)
+        # 1. Visual Indicator
+        content.append(" ")
+        if self.status_str == "ACTIVE" or self.status_str == "RUNNING":
+            content.append("▶ AUTO ROTATION ACTIVE\n", style=f"bold {healthy}")
+        elif self.status_str == "PAUSED":
+            content.append("⏸ OPERATOR ACTIVE\n", style=f"bold {warning}")
+        elif "CRITICAL" in self.status_str:
+            content.append("🚨 CRITICAL SYSTEM FAULT\n", style=f"bold {error}")
+        else:
+            content.append("🚨 ROTATION OFFLINE\n", style=f"bold {error}")
+            
+        # 2. Main Rotation status fields
+        content.append(" STATUS: ", style="white")
+        if self.status_str == "ACTIVE" or self.status_str == "RUNNING":
+            content.append("ACTIVE\n", style=healthy)
         elif self.status_str == "PAUSED":
             content.append("PAUSED\n", style=warning)
-        elif "CRITICAL" in self.status_str:
-            content.append("CRITICAL ALARM\n", style=error)
         else:
-            content.append("OFFLINE / UNREACHABLE\n", style=error)
+            content.append(f"{self.status_str}\n", style=error)
             
-        content.append("  Current:  ", style="white")
-        content.append(f"TTY {self.current_tty}\n", style=accent)
+        content.append(" REASON: ", style="white")
+        reason_style = warning if self.pause_reason != "None" else "white"
+        content.append(f"{self.pause_reason}\n", style=reason_style)
         
-        content.append("  Interval: ", style="white")
-        content.append(f"{self.rotation_interval} seconds\n", style=accent)
+        content.append(" TIMER:  ", style="white")
+        content.append(f"{self.inactivity_timer_str}\n", style=accent)
         
-        content.append("  Last:     ", style="white")
-        content.append(f"{self.last_switch_time}\n\n", style="cyan")
+        content.append(" RESUME: ", style="white")
+        content.append(f"{self.next_auto_resume_str}\n", style="cyan")
         
-        # Prominent Status Block Box
-        content.append(" ")
-        if self.status_str == "RUNNING":
-            content.append("╔════════════════════════════╗\n", style=healthy)
-            content.append("  ║ ", style=healthy)
-            content.append("DISPLAY ROTATION ACTIVE   ", style=f"bold {healthy}")
-            content.append(" ║\n", style=healthy)
-            content.append("  ║ ", style=healthy)
-            content.append(f"Current: TTY {self.current_tty}".ljust(26), style="white")
-            content.append(" ║\n", style=healthy)
-            content.append("  ║ ", style=healthy)
-            content.append(f"Next Switch: {self.next_switch_str}".ljust(26), style="white")
-            content.append(" ║\n", style=healthy)
-            content.append("  ║ ", style=healthy)
-            content.append(f"Interval: {self.rotation_interval} sec".ljust(26), style="white")
-            content.append(" ║\n", style=healthy)
-            content.append("  ╚════════════════════════════╝\n", style=healthy)
-        elif self.status_str == "PAUSED":
-            content.append("╔════════════════════════════╗\n", style=warning)
-            content.append("  ║ ", style=warning)
-            content.append("DISPLAY ROTATION PAUSED   ", style=f"bold {warning}")
-            content.append(" ║\n", style=warning)
-            content.append("  ║ ", style=warning)
-            content.append(f"Locked On: TTY {self.current_tty}".ljust(26), style="white")
-            content.append(" ║\n", style=warning)
-            content.append("  ╚════════════════════════════╝\n", style=warning)
-        elif "CRITICAL" in self.status_str:
-            content.append("╔════════════════════════════╗\n", style=error)
-            content.append("  ║ ", style=error)
-            content.append("CRITICAL SYSTEM FAULT     ", style=f"bold white on {error}")
-            content.append(" ║\n", style=error)
-            content.append("  ║ ", style=error)
-            content.append("Locked On: TTY 1".ljust(26), style="white")
-            content.append(" ║\n", style=error)
-            content.append("  ╚════════════════════════════╝\n", style=error)
+        # 3. Details
+        content.append(f" TTY: {self.current_tty} | INT: {self.rotation_interval}s | LAST: {self.last_switch_time}\n", style=primary)
+        
+        # 4. Hotkeys details / READ-ONLY VIEWER
+        if self.is_readonly:
+            content.append(" [READ-ONLY VIEWER]\n", style=f"bold {warning}")
+            content.append(" Controlled by T310\n", style="white")
         else:
-            content.append("╔════════════════════════════╗\n", style=error)
-            content.append("  ║ ", style=error)
-            content.append("DISPLAY ROTATION OFFLINE  ", style=f"bold {error}")
-            content.append(" ║\n", style=error)
-            content.append("  ║ ", style=error)
-            content.append("Unreachable / Disconnected".ljust(26), style="white")
-            content.append(" ║\n", style=error)
-            content.append("  ╚════════════════════════════╝\n", style=error)
+            content.append(" [P] Pause [R] Resume [C] Auto\n", style="white")
+            content.append(" [1] Lock1 [2] Lock2  [+]/[-]\n", style="white")
             
-        # Hotkeys details
-        content.append("\n  Control Keys:\n", style=f"bold {primary}")
-        content.append("  [P] Pause  [R] Resume  [A] Auto\n", style="white")
-        content.append("  [1] Lock T1 [2] Lock T2  [+]/[-] Int\n", style="white")
-        
         return content

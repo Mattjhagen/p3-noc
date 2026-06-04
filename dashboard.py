@@ -45,9 +45,28 @@ from widgets.autopilot_panel import AutopilotPanel
 from widgets.ai_server_status_panel import AiServerStatusPanel
 from widgets.watchdog_panel import WatchdogPanel
 from widgets.display_rotation_control import DisplayRotationControl
+from widgets.ai_market_briefing import AiMarketBriefingWidget
 
 import logging
 logger = logging.getLogger("dashboard")
+
+def classify_headline_impact(title: str) -> str:
+    t = title.lower()
+    if any(k in t for k in ["etf", "inflow", "outflow", "blackrock", "fidelity", "grayscale"]):
+        return "ETF"
+    if any(k in t for k in ["whale", "transfer", "moves", "mt. gox", "gox", "satoshi"]):
+        return "WHALE"
+    if any(k in t for k in ["hack", "exploit", "compromise", "phish", "steal", "vulnerability", "attack", "security"]):
+        return "SECURITY"
+    if any(k in t for k in ["mining", "miner", "hashrate", "halving", "difficulty"]):
+        return "MINING"
+    if any(k in t for k in ["sec", "regulatory", "ban", "lawsuit", "court", "compliance", "government", "regulation"]):
+        return "REGULATION"
+    if any(k in t for k in ["exchange", "binance", "coinbase", "kraken", "insolvency", "liquidity"]):
+        return "EXCHANGE"
+    if any(k in t for k in ["fed", "inflation", "interest rate", "macro", "economy", "cpi", "fomc"]):
+        return "MACRO"
+    return "MARKET"
 
 class CallableBool:
     def __init__(self, value: bool):
@@ -384,8 +403,15 @@ class P3NocApp(App):
 
     #right-col {
         layout: grid;
+        grid-size: 1 6;
+        grid-rows: 1fr 1fr 1fr 1fr 1fr 1fr;
+        grid-gutter: 1;
+    }
+
+    .r510-mode #right-col {
+        layout: grid;
         grid-size: 1 5;
-        grid-rows: 1fr 1fr 1.2fr 1.1fr 1.1fr; /* Ollama, Alerts, Autopilot, AiServerStatus, Watchdog */
+        grid-rows: 1fr 1fr 1fr 1fr 1fr;
         grid-gutter: 1;
     }
 
@@ -500,17 +526,128 @@ class P3NocApp(App):
     .midnight.wallboard-mode AiServerStatusPanel, .midnight.wallboard-mode DisplayRotationControl, .midnight.wallboard-mode WatchdogPanel {
         border: double #ffffff;
     }
+
+    /* AiMarketBriefingWidget theme styles */
+    .matrix-green AiMarketBriefingWidget {
+        border: round #008800;
+        background: #041404;
+        color: #00ff00;
+    }
+    .matrix-green AiMarketBriefingWidget:focus {
+        border: double #00ff00;
+    }
+    .matrix-green.wallboard-mode AiMarketBriefingWidget {
+        border: double #008800;
+    }
+
+    .amber-crt AiMarketBriefingWidget {
+        border: round #aa7000;
+        background: #140d00;
+        color: #ffb000;
+    }
+    .amber-crt AiMarketBriefingWidget:focus {
+        border: double #ffb000;
+    }
+    .amber-crt.wallboard-mode AiMarketBriefingWidget {
+        border: double #aa7000;
+    }
+
+    .cyber-blue AiMarketBriefingWidget {
+        border: round #006699;
+        background: #001222;
+        color: #00f0ff;
+    }
+    .cyber-blue AiMarketBriefingWidget:focus {
+        border: double #00f0ff;
+    }
+    .cyber-blue.wallboard-mode AiMarketBriefingWidget {
+        border: double #006699;
+    }
+
+    .red-alert AiMarketBriefingWidget {
+        border: round #880000;
+        background: #220000;
+        color: #ff3333;
+    }
+    .red-alert AiMarketBriefingWidget:focus {
+        border: double #ff3333;
+    }
+    .red-alert.wallboard-mode AiMarketBriefingWidget {
+        border: double #880000;
+    }
+
+    .matrix AiMarketBriefingWidget {
+        border: round #00ff00;
+        background: #000000;
+        color: #00ff00;
+    }
+    .matrix AiMarketBriefingWidget:focus {
+        border: double #00ff00;
+    }
+    .matrix.wallboard-mode AiMarketBriefingWidget {
+        border: double #00ff00;
+    }
+
+    .bloomberg AiMarketBriefingWidget {
+        border: round #0044bb;
+        background: #000022;
+        color: #ff8800;
+    }
+    .bloomberg AiMarketBriefingWidget:focus {
+        border: double #ff8800;
+    }
+    .bloomberg.wallboard-mode AiMarketBriefingWidget {
+        border: double #0044bb;
+    }
+
+    .trading-desk AiMarketBriefingWidget {
+        border: round #444444;
+        background: #222222;
+        color: #00ffff;
+    }
+    .trading-desk AiMarketBriefingWidget:focus {
+        border: double #00ffff;
+    }
+    .trading-desk.wallboard-mode AiMarketBriefingWidget {
+        border: double #444444;
+    }
+
+    .midnight AiMarketBriefingWidget {
+        border: round #333333;
+        background: #000000;
+        color: #ffffff;
+    }
+    .midnight AiMarketBriefingWidget:focus {
+        border: double #ffffff;
+    }
+    .midnight.wallboard-mode AiMarketBriefingWidget {
+        border: double #333333;
+    }
+
+    /* Yellow paused panel rules */
+    DisplayRotationControl.paused-panel {
+        border: round #ffff00 !important;
+        background: #1c1c00 !important;
+        color: #ffff00 !important;
+    }
+    DisplayRotationControl.paused-panel:focus {
+        border: double #ffff00 !important;
+    }
+    
+    /* Layout & dimensions */
+    AiMarketBriefingWidget {
+        height: 17;
+        margin: 0 1 1 1;
+    }
     """
 
     # Keyboard Bindings
     BINDINGS = [
-        ("l", "focus_logs", "Focus Logs"),
         ("n", "focus_news", "Focus News"),
         ("r", "focus_risk", "Focus Risk"),
         ("w", "show_weekly_report", "Weekly Report"),
         ("f2", "next_theme", "Cycle Theme"),
         ("f3", "toggle_compact", "Toggle Compact"),
-        ("f4", "toggle_fullscreen_logs", "Fullscreen Logs"),
         ("f5", "refresh_data", "Refresh Data"),
         ("f6", "restart_worker", "Restart Worker"),
         ("f7", "restart_ingest", "Restart Ingest"),
@@ -529,6 +666,10 @@ class P3NocApp(App):
         self.remote_rotator_status = {}
         self.theme_index = 0
         self.logs_fullscreen = False
+        
+        # Briefing caching and smart refresh states
+        self.last_analyzed_id = 0
+        self.last_briefing_time = None
         
         # Initialize services
         self.db_service = DBService()
@@ -624,13 +765,13 @@ class P3NocApp(App):
                 yield self.safe_instantiate(OllamaPanel)
                 yield self.safe_instantiate(AlertPanel)
                 yield self.safe_instantiate(AutopilotPanel)
-                if self.r510_mode:
-                    yield self.safe_instantiate(DisplayRotationControl)
-                else:
+                if not self.r510_mode:
                     yield self.safe_instantiate(AiServerStatusPanel)
+                yield self.safe_instantiate(DisplayRotationControl, is_readonly=self.r510_mode)
                 yield self.safe_instantiate(WatchdogPanel)
                 
         yield self.safe_instantiate(NewsFeed)
+        yield self.safe_instantiate(AiMarketBriefingWidget)
         yield self.safe_instantiate(LogPanel)
         yield self.safe_instantiate(TickerWidget)
         yield Footer()
@@ -646,6 +787,36 @@ class P3NocApp(App):
             self.add_class("wallboard-mode")
             self.set_interval(6.0, self.auto_rotate_focus)
             self.query_one(Footer).display = False
+        if self.r510_mode:
+            self.add_class("r510-mode")
+
+        # Hide LogPanel by default
+        try:
+            self.query_one(LogPanel).display = False
+        except Exception:
+            pass
+
+        # Load initial cached briefing
+        try:
+            self.last_analyzed_id = self.db_service.get_latest_analysis_id()
+            cached = self.db_service.get_latest_cached_briefing()
+            if cached:
+                self.last_briefing_time = cached.get("generated_at")
+                if isinstance(self.last_briefing_time, str):
+                    try:
+                        dt_str = self.last_briefing_time.split("+")[0].split(".")[0]
+                        self.last_briefing_time = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        self.last_briefing_time = datetime.utcnow()
+                self._update_briefing_ui(
+                    cached.get("market_state", "NEUTRAL"),
+                    cached.get("confidence", "N/A"),
+                    cached.get("briefing_text", ""),
+                    self.last_briefing_time,
+                    False
+                )
+        except Exception as e:
+            logger.error(f"Failed to load initial cached briefing: {e}")
 
         # 2. Run Startup Health Validation
         self.run_startup_validation()
@@ -658,8 +829,8 @@ class P3NocApp(App):
         self.set_interval(10.0, self.run_ai_server_update)
         self.set_interval(1.0, self.run_flash_timer)
         self.set_interval(0.25, self.run_logo_flash_timer)
-        if self.r510_mode:
-            self.set_interval(3.0, self.run_remote_rotator_update)
+        self.set_interval(3.0, self.run_remote_rotator_update)
+        self.set_interval(30.0, self.check_briefing_refresh_needed)
 
         # 4. Trigger initial fetches
         self.run_status_and_logs_update()
@@ -667,8 +838,8 @@ class P3NocApp(App):
         self.run_btc_ticker_update()
         self.run_autopilot_cycle()
         self.run_ai_server_update()
-        if self.r510_mode:
-            self.run_remote_rotator_update()
+        self.run_remote_rotator_update()
+        self.check_briefing_refresh_needed()
 
     def activate_startup_safe_mode(self, reason: str):
         """Activates Safe Mode fallback on the dashboard."""
@@ -1113,12 +1284,12 @@ class P3NocApp(App):
             self.query_one(RiskTrendPanel).current_theme = new_theme
             self.query_one(RunbookPanel).current_theme = new_theme
             self.query_one(NewsFeed).current_theme = new_theme
+            self.query_one(AiMarketBriefingWidget).current_theme = new_theme
             self.query_one(LogPanel).current_theme = new_theme
             self.query_one(TickerWidget).current_theme = new_theme
             self.query_one(AutopilotPanel).current_theme = new_theme
-            if self.r510_mode:
-                self.query_one(DisplayRotationControl).current_theme = new_theme
-            else:
+            self.query_one(DisplayRotationControl).current_theme = new_theme
+            if not self.r510_mode:
                 self.query_one(AiServerStatusPanel).current_theme = new_theme
             self.query_one(WatchdogPanel).current_theme = new_theme
         except Exception:
@@ -1420,7 +1591,91 @@ class P3NocApp(App):
             return
         self.run_worker(self._fetch_remote_rotator_job, thread=True)
 
+    def _fetch_local_rotator_status(self):
+        import json
+        is_active = False
+        if sys.platform.startswith("linux"):
+            try:
+                res = subprocess.run(['systemctl', 'is-active', 'p3-tty-rotator'], capture_output=True, text=True, timeout=1.5)
+                is_active = (res.stdout.strip() == 'active')
+            except Exception:
+                pass
+        else:
+            is_active = True
+
+        current_tty = "N/A"
+        if sys.platform.startswith("linux"):
+            try:
+                res = subprocess.run(['fgconsole'], capture_output=True, text=True, timeout=1.5)
+                if res.returncode == 0:
+                    current_tty = str(res.stdout.strip())
+            except Exception:
+                pass
+        else:
+            current_tty = "2" if os.path.exists("/tmp/p3-lock-tty2") else "1"
+
+        lock1 = os.path.exists('/tmp/p3-lock-tty1')
+        lock2 = os.path.exists('/tmp/p3-lock-tty2')
+        alarm = os.path.exists('/tmp/p3-critical-alarm')
+
+        interval = 60
+        try:
+            config_file = "/etc/p3/tty-rotator.conf"
+            if not sys.platform.startswith("linux"):
+                config_file = "/tmp/p3-mock-interval.txt"
+                if os.path.exists(config_file):
+                    with open(config_file) as f:
+                        interval = int(f.read().strip())
+            elif os.path.exists(config_file):
+                with open(config_file) as f:
+                    for line in f:
+                        if line.strip().startswith('ROTATION_INTERVAL='):
+                            interval = int(line.split('=')[1].strip())
+        except Exception:
+            pass
+
+        last_switch_time = 'N/A'
+        next_switch_seconds = 0
+        next_switch_str = '00:00'
+        pause_reason = 'None'
+        inactivity_timer_str = 'N/A'
+        next_auto_resume_str = 'N/A'
+
+        try:
+            if os.path.exists('/tmp/p3-tty-status.json'):
+                with open('/tmp/p3-tty-status.json') as f:
+                    data = json.load(f)
+                    last_switch_time = data.get('last_switch_time', 'N/A')
+                    next_switch_seconds = data.get('next_switch_seconds', 0)
+                    next_switch_str = data.get('next_switch_str', '00:00')
+                    pause_reason = data.get('pause_reason', 'None')
+                    inactivity_timer_str = data.get('inactivity_timer_str', 'N/A')
+                    next_auto_resume_str = data.get('next_auto_resume_str', 'N/A')
+        except Exception:
+            pass
+
+        status = 'PAUSED' if not is_active else ('CRITICAL NON-RECOVERABLE FAULT' if alarm else ('PAUSED' if (lock1 or lock2 or pause_reason != 'None') else 'ACTIVE'))
+        return {
+            'status': status,
+            'current_tty': current_tty,
+            'rotation_interval': interval,
+            'last_switch_time': last_switch_time,
+            'next_switch_seconds': next_switch_seconds,
+            'next_switch_str': next_switch_str,
+            'lock_tty1': lock1,
+            'lock_tty2': lock2,
+            'alarm_active': alarm,
+            'pause_reason': pause_reason,
+            'inactivity_timer_str': inactivity_timer_str,
+            'next_auto_resume_str': next_auto_resume_str
+        }
+
     def _fetch_remote_rotator_job(self):
+        if not self.r510_mode:
+            data = self._fetch_local_rotator_status()
+            self.app.call_from_thread(self._update_remote_rotator_ui, data)
+            return
+
         import json
         cmd = [
             "ssh", "-o", "ConnectTimeout=2", "-o", "StrictHostKeyChecking=no",
@@ -1451,6 +1706,9 @@ class P3NocApp(App):
             "last_switch_time = 'N/A'; "
             "next_switch_seconds = 0; "
             "next_switch_str = '00:00'; "
+            "pause_reason = 'None'; "
+            "inactivity_timer_str = 'N/A'; "
+            "next_auto_resume_str = 'N/A'; "
             "try: "
             "    if os.path.exists('/tmp/p3-tty-status.json'): "
             "        with open('/tmp/p3-tty-status.json') as f: "
@@ -1458,9 +1716,12 @@ class P3NocApp(App):
             "            last_switch_time = data.get('last_switch_time', 'N/A'); "
             "            next_switch_seconds = data.get('next_switch_seconds', 0); "
             "            next_switch_str = data.get('next_switch_str', '00:00'); "
+            "            pause_reason = data.get('pause_reason', 'None'); "
+            "            inactivity_timer_str = data.get('inactivity_timer_str', 'N/A'); "
+            "            next_auto_resume_str = data.get('next_auto_resume_str', 'N/A'); "
             "except: pass; "
-            "status = 'PAUSED' if not is_active else ('CRITICAL NON-RECOVERABLE FAULT' if alarm else ('PAUSED' if (lock1 or lock2) else 'RUNNING')); "
-            "print(json.dumps({'status': status, 'current_tty': current_tty if current_tty else 'N/A', 'rotation_interval': interval, 'last_switch_time': last_switch_time, 'next_switch_seconds': next_switch_seconds, 'next_switch_str': next_switch_str, 'lock_tty1': lock1, 'lock_tty2': lock2, 'alarm_active': alarm}));\""
+            "status = 'PAUSED' if not is_active else ('CRITICAL NON-RECOVERABLE FAULT' if alarm else ('PAUSED' if (lock1 or lock2 or pause_reason != 'None') else 'ACTIVE')); "
+            "print(json.dumps({'status': status, 'current_tty': current_tty if current_tty else 'N/A', 'rotation_interval': interval, 'last_switch_time': last_switch_time, 'next_switch_seconds': next_switch_seconds, 'next_switch_str': next_switch_str, 'lock_tty1': lock1, 'lock_tty2': lock2, 'alarm_active': alarm, 'pause_reason': pause_reason, 'inactivity_timer_str': inactivity_timer_str, 'next_auto_resume_str': next_auto_resume_str}));\""
         ]
         
         try:
@@ -1493,9 +1754,32 @@ class P3NocApp(App):
                 except:
                     pass
             
-            status = "RUNNING"
+            last_activity = 0.0
+            if os.path.exists("/tmp/p3-tty-activity"):
+                try:
+                    last_activity = os.path.getmtime("/tmp/p3-tty-activity")
+                except:
+                    pass
+            
+            now_time = time.time()
+            timeout = 1800
+            has_activity = (now_time - last_activity < timeout)
+            
+            status = "ACTIVE"
+            pause_reason = "None"
+            inactivity_timer_str = "N/A"
+            next_auto_resume_str = "N/A"
+            
             if alarm_active:
                 status = "CRITICAL NON-RECOVERABLE FAULT"
+            elif has_activity:
+                status = "PAUSED"
+                pause_reason = "Operator Activity"
+                rem = int(max(0, timeout - (now_time - last_activity)))
+                i_mins = rem // 60
+                i_secs = rem % 60
+                inactivity_timer_str = f"{i_mins}m {i_secs}s"
+                next_auto_resume_str = time.strftime("%H:%M UTC", time.gmtime(now_time + rem))
             elif lock_tty1 or lock_tty2:
                 status = "PAUSED"
                 
@@ -1504,11 +1788,14 @@ class P3NocApp(App):
                 "current_tty": "2" if lock_tty2 else "1",
                 "rotation_interval": interval,
                 "last_switch_time": "12:00:00",
-                "next_switch_seconds": 30,
-                "next_switch_str": "00:30",
+                "next_switch_seconds": 30 if status == "ACTIVE" else 0,
+                "next_switch_str": "00:30" if status == "ACTIVE" else "00:00",
                 "lock_tty1": lock_tty1,
                 "lock_tty2": lock_tty2,
-                "alarm_active": alarm_active
+                "alarm_active": alarm_active,
+                "pause_reason": pause_reason,
+                "inactivity_timer_str": inactivity_timer_str,
+                "next_auto_resume_str": next_auto_resume_str
             }
             self._update_remote_rotator_ui(data)
         except Exception as e:
@@ -1523,6 +1810,9 @@ class P3NocApp(App):
                 widget.rotation_interval = data.get("rotation_interval", 60)
                 widget.last_switch_time = data.get("last_switch_time", "N/A")
                 widget.next_switch_str = data.get("next_switch_str", "00:00")
+                widget.pause_reason = data.get("pause_reason", "None")
+                widget.inactivity_timer_str = data.get("inactivity_timer_str", "N/A")
+                widget.next_auto_resume_str = data.get("next_auto_resume_str", "N/A")
                 widget.current_theme = THEMES[self.theme_index]
                 self.remote_rotator_status = data
             else:
@@ -1531,6 +1821,9 @@ class P3NocApp(App):
                 widget.rotation_interval = 60
                 widget.last_switch_time = "N/A"
                 widget.next_switch_str = "00:00"
+                widget.pause_reason = "None"
+                widget.inactivity_timer_str = "N/A"
+                widget.next_auto_resume_str = "N/A"
                 widget.current_theme = THEMES[self.theme_index]
                 self.remote_rotator_status = {}
         except Exception:
@@ -1540,9 +1833,11 @@ class P3NocApp(App):
         self.run_worker(lambda: self._execute_remote_action_job(action_name, *args), thread=True)
 
     def _execute_remote_action_job(self, action_name, *args):
-        logger.info(f"Dispatching remote action: {action_name} with args {args}")
-        ssh_prefix = ["ssh", "-o", "ConnectTimeout=2", "-o", "StrictHostKeyChecking=no", f"{T310_USER}@{T310_IP}"]
-        
+        if self.r510_mode:
+            logger.warning("R510 is read-only. Action ignored.")
+            return
+
+        logger.info(f"Executing local action: {action_name} with args {args}")
         cmd = None
         if action_name == "pause":
             cmd = "sudo systemctl stop p3-tty-rotator"
@@ -1557,17 +1852,15 @@ class P3NocApp(App):
         elif action_name == "set_interval":
             new_interval = args[0]
             cmd = f"sudo mkdir -p /etc/p3 && echo 'ROTATION_INTERVAL={new_interval}' | sudo tee /etc/p3/tty-rotator.conf"
-            
-            if not sys.platform.startswith("linux"):
-                try:
-                    with open("/tmp/p3-mock-interval.txt", "w") as f:
-                        f.write(str(new_interval))
-                except:
-                    pass
+            try:
+                with open("/tmp/p3-mock-interval.txt", "w") as f:
+                    f.write(str(new_interval))
+            except:
+                pass
 
         if cmd:
             if not sys.platform.startswith("linux"):
-                logger.info(f"[SIMULATION] SSH remote execution: {cmd}")
+                logger.info(f"[SIMULATION] Local execution: {cmd}")
                 try:
                     if action_name == "lock_tty1":
                         with open("/tmp/p3-lock-tty1", "w") as f: f.write("1")
@@ -1582,13 +1875,174 @@ class P3NocApp(App):
                     pass
             else:
                 try:
-                    res = subprocess.run(ssh_prefix + [cmd], capture_output=True, text=True, timeout=4.0)
+                    res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=4.0)
                     if res.returncode != 0:
-                        logger.error(f"Remote action {action_name} failed: {res.stderr.strip()}")
+                        logger.error(f"Local action {action_name} failed: {res.stderr.strip()}")
                 except Exception as e:
-                    logger.error(f"Failed to connect and run remote action {action_name}: {e}")
+                    logger.error(f"Failed to run local action {action_name}: {e}")
                     
-        self._fetch_remote_rotator_job()
+        data = self._fetch_local_rotator_status()
+        self.app.call_from_thread(self._update_remote_rotator_ui, data)
+
+    # --- AI Market Briefing Background Jobs ---
+
+    def check_briefing_refresh_needed(self):
+        if not self.db_online:
+            return
+        
+        current_id = self.db_service.get_latest_analysis_id()
+        new_analysis_arrived = (current_id > self.last_analyzed_id)
+        
+        now = datetime.utcnow()
+        age_exceeded = False
+        if self.last_briefing_time:
+            age_delta = now - self.last_briefing_time
+            if age_delta.total_seconds() > 600.0:  # 10 minutes
+                age_exceeded = True
+        else:
+            age_exceeded = True
+
+        if new_analysis_arrived or age_exceeded:
+            self.run_market_briefing_update()
+
+    def run_market_briefing_update(self, manual=False):
+        if self.startup_safe_mode_active:
+            return
+        self.run_worker(lambda: self._generate_briefing_job(manual), thread=True)
+
+    def _generate_briefing_job(self, manual=False):
+        logger.info("Starting AI Market Briefing update job")
+        try:
+            if not self.db_service.check_db_health():
+                self.db_online = False
+                self.app.call_from_thread(self._handle_briefing_error, "Database offline")
+                return
+
+            articles = self.db_service.get_latest_analyzed_articles_for_briefing(limit=10)
+            if not articles:
+                logger.info("No articles found for briefing.")
+                return
+
+            latest_id = self.db_service.get_latest_analysis_id()
+
+            context_lines = []
+            for art in articles:
+                title = art.get("title", "")
+                sentiment = art.get("sentiment", "NEUTRAL")
+                risk_score = art.get("importance_score", 0)
+                category = classify_headline_impact(title)
+                summary = art.get("summary", "")
+                summary_cropped = summary[:150] + "..." if len(summary) > 150 else summary
+                context_lines.append(
+                    f"Title: {title}\n"
+                    f"Sentiment: {sentiment}\n"
+                    f"Risk Score: {risk_score}\n"
+                    f"Category: {category}\n"
+                    f"Summary: {summary_cropped}"
+                )
+
+            context_str = "\n---\n".join(context_lines)
+
+            system_prompt = (
+                "You are a financial analyst specializing in crypto market operations. "
+                "Analyze the provided list of recent articles (including sentiment, risk scores, impact categories, and summaries) "
+                "and generate a highly concise market briefing in the EXACT format below. Do not include any introductory or concluding text. "
+                "Keep the themes, risks, and outlook short (no wrapping, max 70 characters per bullet point, max 76 characters for outlook) "
+                "so it fits perfectly on a NOC wallboard dashboard. "
+                "Do not use markdown formatting (like bold **, italics, etc) in your responses.\n\n"
+                "REQUIRED FORMAT:\n"
+                "MARKET STATE: <BULLISH, BEARISH, or NEUTRAL>\n"
+                "THEMES\n"
+                "• <Theme 1 summary, max 70 chars>\n"
+                "• <Theme 2 summary, max 70 chars>\n"
+                "RISKS\n"
+                "• <Risk 1 summary, max 70 chars>\n"
+                "• <Risk 2 summary, max 70 chars>\n"
+                "24H OUTLOOK\n"
+                "<Outlook text, single sentence, max 76 chars>\n"
+                "CONFIDENCE: <Confidence percentage, e.g., 85%>"
+            )
+
+            prompt_text = f"Analyze the following 10 recent crypto market articles and generate the NOC briefing:\n\n{context_str}"
+
+            url = f"{self.ollama_service.url}/api/generate"
+            payload = {
+                "model": self.ollama_model,
+                "system": system_prompt,
+                "prompt": prompt_text,
+                "stream": False
+            }
+
+            import requests
+            res = requests.post(url, json=payload, timeout=30.0)
+            if res.status_code == 200:
+                response_json = res.json()
+                text = response_json.get("response", "")
+
+                market_state = "NEUTRAL"
+                confidence = "80%"
+
+                lines = [l.strip() for l in text.splitlines() if l.strip()]
+                for line in lines:
+                    line_upper = line.upper()
+                    if line_upper.startswith("MARKET STATE:"):
+                        state_val = line.split(":", 1)[1].strip().upper()
+                        if "BULL" in state_val:
+                            market_state = "BULLISH"
+                        elif "BEAR" in state_val:
+                            market_state = "BEARISH"
+                        else:
+                            market_state = "NEUTRAL"
+                    elif line_upper.startswith("CONFIDENCE:"):
+                        confidence = line.split(":", 1)[1].strip()
+
+                self.db_service.save_briefing_to_cache(market_state, confidence, text)
+
+                self.last_analyzed_id = latest_id
+                self.last_briefing_time = datetime.utcnow()
+
+                self.app.call_from_thread(self._update_briefing_ui, market_state, confidence, text, datetime.utcnow(), False)
+            else:
+                logger.error(f"Ollama briefing generation failed: HTTP {res.status_code}")
+                self.app.call_from_thread(self._handle_briefing_error, f"Ollama HTTP {res.status_code}")
+
+        except Exception as e:
+            logger.error(f"Error generating briefing: {e}")
+            self.app.call_from_thread(self._handle_briefing_error, str(e))
+
+    def _handle_briefing_error(self, error_msg):
+        logger.warning(f"Briefing update failed, falling back to cache: {error_msg}")
+        try:
+            cached = self.db_service.get_latest_cached_briefing()
+            if cached:
+                market_state = cached.get("market_state", "NEUTRAL")
+                confidence = cached.get("confidence", "N/A")
+                briefing_text = cached.get("briefing_text", "")
+                generated_at = cached.get("generated_at")
+                if isinstance(generated_at, str):
+                    try:
+                        dt_str = generated_at.split("+")[0].split(".")[0]
+                        generated_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        generated_at = datetime.utcnow()
+                self._update_briefing_ui(market_state, confidence, briefing_text, generated_at, True)
+            else:
+                widget = self.query_one(AiMarketBriefingWidget)
+                widget.stale_mode = True
+        except Exception as e:
+            logger.error(f"Failed to load cached briefing during fallback: {e}")
+
+    def _update_briefing_ui(self, market_state, confidence, briefing_text, generated_at, stale_mode):
+        try:
+            widget = self.query_one(AiMarketBriefingWidget)
+            widget.market_state = market_state
+            widget.confidence = confidence
+            widget.briefing_text = briefing_text
+            widget.generated_at = generated_at
+            widget.stale_mode = stale_mode
+            widget.current_theme = THEMES[self.theme_index]
+        except Exception as e:
+            logger.error(f"Failed to update briefing UI: {e}")
 
     # --- AI Server Monitoring Background Jobs & UI updates ---
 
@@ -2030,47 +2484,76 @@ Report generated autonomously by P3 NOC Autopilot.
             self.notify(f"Could not read report file: {e}", severity="error")
 
     def on_key(self, event) -> None:
-        if self.r510_mode:
-            key = event.key
-            if key == "p":
+        # Reset the inactivity timer on any keyboard activity
+        try:
+            with open("/tmp/p3-tty-activity", "w") as f:
+                f.write(str(time.time()))
+        except Exception:
+            pass
+
+        key = event.key
+
+        # Hidden diagnostic hotkey Shift+L (Textual maps Shift+L as "L")
+        if key == "L":
+            event.prevent_default()
+            event.stop()
+            try:
+                log_panel = self.query_one(LogPanel)
+                log_panel.display = not log_panel.display
+                self.notify("Diagnostic logs " + ("shown" if log_panel.display else "hidden"))
+            except Exception as e:
+                logger.error(f"Failed to toggle LogPanel: {e}")
+            return
+
+        # A / a: Refresh AI Briefing Now
+        if key in ("A", "a"):
+            event.prevent_default()
+            event.stop()
+            self.notify("Manual AI Briefing Refresh triggered.")
+            self.run_market_briefing_update(manual=True)
+            return
+
+        # Display rotation controls (Only T310 master can execute actions; R510 ignores keypresses)
+        if not self.r510_mode:
+            if key in ("p", "P"):
                 event.prevent_default()
                 event.stop()
                 self.dispatch_remote_action("pause")
-                self.notify("Remote: Pausing Display Rotation")
-            elif key == "r":
+                self.notify("Pausing Display Rotation")
+            elif key in ("r", "R"):
                 event.prevent_default()
                 event.stop()
                 self.dispatch_remote_action("resume")
-                self.notify("Remote: Resuming Display Rotation")
+                self.notify("Resuming Display Rotation")
             elif key == "1":
                 event.prevent_default()
                 event.stop()
                 self.dispatch_remote_action("lock_tty1")
-                self.notify("Remote: Locking Display on TTY1 (P3 NOC)")
+                self.notify("Locking Display on TTY1 (P3 NOC)")
             elif key == "2":
                 event.prevent_default()
                 event.stop()
                 self.dispatch_remote_action("lock_tty2")
-                self.notify("Remote: Locking Display on TTY2 (AI Server)")
-            elif key == "a":
+                self.notify("Locking Display on TTY2 (AI Server)")
+            elif key in ("c", "C"):
                 event.prevent_default()
                 event.stop()
                 self.dispatch_remote_action("resume_auto")
-                self.notify("Remote: Resuming Automatic Rotation")
+                self.notify("Resuming Automatic Rotation")
             elif key in ("+", "="):
                 event.prevent_default()
                 event.stop()
                 current_interval = self.remote_rotator_status.get("rotation_interval", 60)
                 new_interval = min(300, current_interval + 15)
                 self.dispatch_remote_action("set_interval", new_interval)
-                self.notify(f"Remote: Interval set to {new_interval}s (+15s)")
+                self.notify(f"Interval set to {new_interval}s (+15s)")
             elif key == "-":
                 event.prevent_default()
                 event.stop()
                 current_interval = self.remote_rotator_status.get("rotation_interval", 60)
                 new_interval = max(15, current_interval - 15)
                 self.dispatch_remote_action("set_interval", new_interval)
-                self.notify(f"Remote: Interval set to {new_interval}s (-15s)")
+                self.notify(f"Interval set to {new_interval}s (-15s)")
 
 # --- Weekly Report Dialog & Autopilot Helpers ---
 

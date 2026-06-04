@@ -30,6 +30,7 @@ LOCK_TTY1_FILE = "/tmp/p3-lock-tty1"
 LOCK_TTY2_FILE = "/tmp/p3-lock-tty2"
 CRITICAL_ALARM_FILE = "/tmp/p3-critical-alarm"
 STATUS_JSON_FILE = "/tmp/p3-tty-status.json"
+ACTIVITY_FILE = "/tmp/p3-tty-activity"
 
 def run_db_log(severity, event, action_taken, result):
     """Safely log rotation state transitions to the central database."""
@@ -121,37 +122,54 @@ def switch_to_tty(target_tty: int) -> bool:
         logger.error(f"Exception executing chvt {target_tty}: {e}")
         return False
 
-def load_rotation_interval() -> int:
-    """Read rotation interval from config, enforce constraints (15s to 300s). Default to 60s."""
+def load_config() -> tuple:
+    """Read ROTATION_INTERVAL and IDLE_RESUME_TIMEOUT from config, enforce constraints. Return (interval, timeout)."""
     config_file = "/etc/p3/tty-rotator.conf"
     interval = 60
+    timeout = 1800
     if os.path.exists(config_file):
         try:
             with open(config_file, "r") as f:
                 for line in f:
-                    if line.strip().startswith("ROTATION_INTERVAL="):
+                    line = line.strip()
+                    if line.startswith("ROTATION_INTERVAL="):
                         val = line.split("=")[1].strip()
                         interval = int(val)
                         interval = max(15, min(300, interval))
-                        break
+                    elif line.startswith("IDLE_RESUME_TIMEOUT="):
+                        val = line.split("=")[1].strip()
+                        timeout = int(val)
+                        timeout = max(10, min(86400, timeout))
         except Exception as e:
-            logger.debug(f"Could not load interval from config: {e}")
-    return interval
+            logger.debug(f"Could not load config: {e}")
+    return interval, timeout
 
-def write_status(status: str, current_tty: int, interval: int, last_switch_time: str, next_switch_seconds: int):
+def write_status(status: str, current_tty: int, interval: int, last_switch_time: str, next_switch_seconds: int,
+                 pause_reason: str = "None", inactivity_seconds_remaining: int = 0, next_auto_resume_str: str = "N/A"):
     """Write rotator status object atomically to /tmp/p3-tty-status.json."""
     try:
         mins = next_switch_seconds // 60
         secs = next_switch_seconds % 60
         next_switch_str = f"{mins:02d}:{secs:02d}"
         
+        if inactivity_seconds_remaining > 0:
+            i_mins = inactivity_seconds_remaining // 60
+            i_secs = inactivity_seconds_remaining % 60
+            inactivity_timer_str = f"{i_mins}m {i_secs}s"
+        else:
+            inactivity_timer_str = "0m 00s" if status == "PAUSED" and pause_reason != "None" else "N/A"
+
         status_data = {
             "status": status,
             "current_tty": current_tty,
             "rotation_interval": interval,
             "last_switch_time": last_switch_time,
             "next_switch_seconds": next_switch_seconds,
-            "next_switch_str": next_switch_str
+            "next_switch_str": next_switch_str,
+            "pause_reason": pause_reason,
+            "inactivity_seconds_remaining": inactivity_seconds_remaining,
+            "inactivity_timer_str": inactivity_timer_str,
+            "next_auto_resume_str": next_auto_resume_str
         }
         
         temp_file = STATUS_JSON_FILE + ".tmp"
@@ -171,7 +189,11 @@ def main():
     current_target = 1
     seconds_elapsed = 0
     
-    # Track states for change logging
+    # Track states for change logging and timer resets
+    in_manual_override = False
+    last_manual_change_time = 0.0
+    last_observed_tty = None
+    
     last_locked_state = None  # Can be None, 'tty1', 'tty2', or 'unlocked'
     last_alarm_state = False
     last_switch_time = time.strftime("%H:%M:%S")
@@ -181,12 +203,45 @@ def main():
 
     while True:
         try:
+            # Load config values dynamically
+            interval, timeout = load_config()
+            
             # Check override files
             lock_tty1 = os.path.exists(LOCK_TTY1_FILE)
             lock_tty2 = os.path.exists(LOCK_TTY2_FILE)
             critical_active = os.path.exists(CRITICAL_ALARM_FILE)
 
-            # Determine log changes for locks
+            # Get actual active TTY
+            active_tty = get_active_tty()
+            if active_tty is None:
+                active_tty = current_target
+
+            # Check dashboard activity file
+            last_activity_time = 0.0
+            if os.path.exists(ACTIVITY_FILE):
+                try:
+                    last_activity_time = os.path.getmtime(ACTIVITY_FILE)
+                except Exception:
+                    pass
+
+            now_time = time.time()
+            has_operator_activity = (now_time - last_activity_time < timeout)
+
+            # Detect manual console override
+            if active_tty != current_target:
+                # If we were not already in manual override, or active TTY changed again
+                if not in_manual_override or active_tty != last_observed_tty:
+                    if not in_manual_override:
+                        logger.info("Operator manually changed console. Rotation paused.")
+                        run_db_log("INFO", "Operator manually changed console. Rotation paused.", "Detected manual TTY switch", "ROTATION_PAUSED")
+                    else:
+                        logger.info("Additional manual TTY change detected. Resetting inactivity timer.")
+                    
+                    in_manual_override = True
+                    last_manual_change_time = now_time
+                    last_observed_tty = active_tty
+
+            # Resolve lock states logging
             current_locked = 'unlocked'
             if lock_tty1:
                 current_locked = 'tty1'
@@ -202,7 +257,7 @@ def main():
                     run_db_log("INFO", "Operator overrides cleared. Resuming automatic rotation.", "rm /tmp/p3-lock-tty*", "ROTATION_RESUMED")
             last_locked_state = current_locked
 
-            # Determine log changes for critical alarms
+            # Resolve critical alarm state logging
             if last_alarm_state != critical_active:
                 if critical_active:
                     alarm_info = "Unknown"
@@ -216,63 +271,104 @@ def main():
                     run_db_log("INFO", "Critical alarm cleared. Resuming TTY rotation.", "Resumed tty rotation", "ROTATION_RESUMED")
             last_alarm_state = critical_active
 
-            # Resolve current TTY behavior based on conditions
-            interval = load_rotation_interval()
-            status = "RUNNING"
-            next_switch_seconds = max(0, interval - seconds_elapsed)
+            # Resolve rotation state
+            status = "ACTIVE"
+            pause_reason = "None"
+            inactivity_seconds_remaining = 0
+            next_auto_resume_str = "N/A"
 
-            if lock_tty1:
+            if critical_active:
                 status = "PAUSED"
-                next_switch_seconds = 0
-                if switch_to_tty(1):
-                    if current_target != 1:
-                        last_switch_time = time.strftime("%H:%M:%S")
-                    current_target = 1
+                pause_reason = "None"
+                switch_to_tty(1)
+                current_target = 1
+                seconds_elapsed = 0
+                in_manual_override = False  # Ignore manual overrides under safety alarm
+            elif has_operator_activity:
+                status = "PAUSED"
+                pause_reason = "Operator Activity"
+                inactivity_seconds_remaining = int(max(0.0, timeout - (now_time - last_activity_time)))
+                seconds_elapsed = 0
+            elif in_manual_override:
+                # Check if override has timed out
+                time_since_manual = now_time - last_manual_change_time
+                if time_since_manual >= timeout:
+                    logger.info("Operator inactivity timeout reached. Rotation resumed.")
+                    run_db_log("INFO", "Operator inactivity timeout reached. Rotation resumed.", "Idle timeout expired", "ROTATION_RESUMED")
+                    in_manual_override = False
+                    status = "ACTIVE"
+                    pause_reason = "None"
+                    if active_tty in (1, 2):
+                        current_target = active_tty
+                    else:
+                        current_target = 1
+                    seconds_elapsed = 0
+                else:
+                    status = "PAUSED"
+                    pause_reason = "Manual Console Override"
+                    inactivity_seconds_remaining = int(max(0.0, timeout - time_since_manual))
+                    seconds_elapsed = 0
+            elif lock_tty1:
+                status = "PAUSED"
+                pause_reason = "None"
+                switch_to_tty(1)
+                current_target = 1
                 seconds_elapsed = 0
             elif lock_tty2:
                 status = "PAUSED"
-                next_switch_seconds = 0
-                if switch_to_tty(2):
-                    if current_target != 2:
-                        last_switch_time = time.strftime("%H:%M:%S")
-                    current_target = 2
-                seconds_elapsed = 0
-            elif critical_active:
-                status = "CRITICAL NON-RECOVERABLE FAULT"
-                next_switch_seconds = 0
-                if switch_to_tty(1):
-                    if current_target != 1:
-                        last_switch_time = time.strftime("%H:%M:%S")
-                    current_target = 1
+                pause_reason = "None"
+                switch_to_tty(2)
+                current_target = 2
                 seconds_elapsed = 0
             else:
                 # Normal automatic rotation
-                active_tty = get_active_tty()
-                if active_tty is not None and active_tty not in (1, 2):
-                    # Operator is working on another terminal, pause rotation to be polite
-                    logger.debug(f"Active terminal is TTY {active_tty} (not TTY1 or TTY2). Rotation paused.")
-                    write_status("PAUSED", active_tty, interval, last_switch_time, next_switch_seconds)
+                status = "ACTIVE"
+                pause_reason = "None"
+                
+                if active_tty not in (1, 2):
+                    # Pause but no alarm or manual override timer
+                    write_status(
+                        status="PAUSED",
+                        current_tty=active_tty,
+                        interval=interval,
+                        last_switch_time=last_switch_time,
+                        next_switch_seconds=0,
+                        pause_reason="None",
+                        inactivity_seconds_remaining=0,
+                        next_auto_resume_str="N/A"
+                    )
                     time.sleep(1.0)
                     continue
 
                 if seconds_elapsed >= interval:
-                    # Switch target TTY
                     next_target = 2 if current_target == 1 else 1
                     if switch_to_tty(next_target):
                         current_target = next_target
                         last_switch_time = time.strftime("%H:%M:%S")
                     seconds_elapsed = 0
-                    next_switch_seconds = interval
                 else:
                     switch_to_tty(current_target)
                     seconds_elapsed += 1
 
-            # Get actual active TTY for status report
-            reported_tty = get_active_tty()
-            if reported_tty is None:
-                reported_tty = current_target
-                
-            write_status(status, reported_tty, interval, last_switch_time, next_switch_seconds)
+            # Format next resume UTC timestamp
+            if status == "PAUSED" and pause_reason in ("Operator Activity", "Manual Console Override"):
+                resume_time_epoch = now_time + inactivity_seconds_remaining
+                next_auto_resume_str = time.strftime("%H:%M UTC", time.gmtime(resume_time_epoch))
+
+            # Format next switch seconds
+            next_switch_seconds = max(0, interval - seconds_elapsed) if status == "ACTIVE" else 0
+
+            # Write status block to JSON
+            write_status(
+                status=status,
+                current_tty=active_tty,
+                interval=interval,
+                last_switch_time=last_switch_time,
+                next_switch_seconds=next_switch_seconds,
+                pause_reason=pause_reason,
+                inactivity_seconds_remaining=inactivity_seconds_remaining,
+                next_auto_resume_str=next_auto_resume_str
+            )
 
         except Exception as e:
             logger.error(f"Error in rotator main loop: {e}", exc_info=True)

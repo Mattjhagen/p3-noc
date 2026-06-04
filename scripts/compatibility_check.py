@@ -19,6 +19,8 @@ from widgets.autopilot_panel import AutopilotPanel
 from widgets.news_feed import NewsFeed
 from widgets.log_panel import LogPanel
 from widgets.ticker import TickerWidget
+from widgets.display_rotation_control import DisplayRotationControl
+from widgets.ai_market_briefing import AiMarketBriefingWidget
 from dashboard import P3NocApp
 
 def test_individual_widgets():
@@ -38,6 +40,8 @@ def test_individual_widgets():
         ("NewsFeed", NewsFeed()),
         ("LogPanel", LogPanel()),
         ("TickerWidget", TickerWidget()),
+        ("DisplayRotationControl", DisplayRotationControl(is_readonly=False)),
+        ("AiMarketBriefingWidget", AiMarketBriefingWidget()),
     ]
     
     for name, w in widgets:
