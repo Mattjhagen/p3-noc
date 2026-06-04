@@ -1945,14 +1945,16 @@ class P3NocApp(App):
     def _save_briefing_to_file(self, briefing):
         try:
             import json
-            from config.settings import BASE_DIR
-            cache_path = os.path.join(BASE_DIR, "briefing_cache.json")
+            cache_dir = "/opt/p3-noc/cache"
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_path = os.path.join(cache_dir, "market_briefing.json")
             with open(cache_path, "w") as f:
                 json.dump(briefing, f)
         except Exception as e:
             logger.error(f"Failed to save briefing to file cache: {e}")
             try:
-                with open("/tmp/p3-briefing-cache.json", "w") as f:
+                os.makedirs("/tmp/p3-cache", exist_ok=True)
+                with open("/tmp/p3-cache/market_briefing.json", "w") as f:
                     json.dump(briefing, f)
             except Exception:
                 pass
@@ -1960,13 +1962,12 @@ class P3NocApp(App):
     def _load_briefing_from_file(self) -> dict:
         try:
             import json
-            from config.settings import BASE_DIR
-            cache_path = os.path.join(BASE_DIR, "briefing_cache.json")
+            cache_path = "/opt/p3-noc/cache/market_briefing.json"
             if os.path.exists(cache_path):
                 with open(cache_path, "r") as f:
                     return json.load(f)
-            elif os.path.exists("/tmp/p3-briefing-cache.json"):
-                with open("/tmp/p3-briefing-cache.json", "r") as f:
+            elif os.path.exists("/tmp/p3-cache/market_briefing.json"):
+                with open("/tmp/p3-cache/market_briefing.json", "r") as f:
                     return json.load(f)
         except Exception as e:
             logger.error(f"Failed to load briefing from file cache: {e}")
@@ -2109,7 +2110,7 @@ class P3NocApp(App):
 
                 # Compute Outlook
                 if market_state == "BULLISH":
-                    outlook = "Upside momentum with positive sentiment."
+                    outlook = "Positive momentum with upside potential."
                 elif market_state == "BEARISH":
                     outlook = "Downside pressure with support testing."
                 else:
@@ -2139,7 +2140,7 @@ class P3NocApp(App):
                 }
                 
                 import requests
-                res = requests.post(url, json=payload, timeout=8.0)
+                res = requests.post(url, json=payload, timeout=45.0)
                 if res.status_code == 200:
                     summary = res.json().get("response", "").strip()
                     summary = summary.replace('"', '').replace('`', '').strip()
