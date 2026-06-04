@@ -170,10 +170,10 @@ def main():
     import requests
     try:
         res = requests.post(f"{OLLAMA_URL}/api/generate", json={
-            "model": "phi3:mini",
+            "model": OLLAMA_MODEL,
             "prompt": prompt_text,
             "stream": False
-        }, timeout=120.0)
+        }, timeout=180.0)
         
         logger.info(f"Ollama response status: {res.status_code}")
         if res.status_code == 200:
