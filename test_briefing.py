@@ -170,7 +170,7 @@ def main():
     import requests
     try:
         res = requests.post(f"{OLLAMA_URL}/api/generate", json={
-            "model": OLLAMA_MODEL,
+            "model": "phi3:mini",
             "prompt": prompt_text,
             "stream": False
         }, timeout=120.0)
