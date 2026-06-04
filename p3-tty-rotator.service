@@ -1,0 +1,20 @@
+[Unit]
+Description=P3 NOC TTY Console Rotator
+After=multi-user.target postgresql.service getty@tty1.service getty@tty2.service
+Wants=postgresql.service getty@tty1.service getty@tty2.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/p3-noc
+ExecStart=/usr/bin/python3 services/tty_rotator.py
+
+# Environment configuration
+Environment=DATABASE_URL=postgresql://researcher:secure_password_change_me@localhost:5432/bitcoin_research
+EnvironmentFile=-/opt/p3-noc/.env
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

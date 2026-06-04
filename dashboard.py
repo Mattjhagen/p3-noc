@@ -5,6 +5,7 @@ import os
 import time
 import subprocess
 import psutil
+import atexit
 from datetime import datetime
 from textual.app import App, ComposeResult
 from textual.containers import Container
@@ -13,7 +14,7 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen
 
 # Import configuration settings and themes
-from config.settings import REFRESH_RATES, OLLAMA_MODEL, OLLAMA_REMOTE
+from config.settings import REFRESH_RATES, OLLAMA_MODEL, OLLAMA_REMOTE, AI_SERVER_HOST, T310_IP, T310_USER
 from config.themes import THEMES, THEME_NAMES
 from services.db_service import DBService
 from services.log_service import LogService
@@ -24,6 +25,7 @@ from services.recovery_service import RecoveryService
 from services.autopilot_service import AutopilotService
 from services.routing_service import RoutingService
 from services.ai_server_service import AiServerService
+import socket
 
 # Import custom widgets
 from widgets.header import HeaderWidget
@@ -42,6 +44,7 @@ from widgets.runbook_panel import RunbookPanel
 from widgets.autopilot_panel import AutopilotPanel
 from widgets.ai_server_status_panel import AiServerStatusPanel
 from widgets.watchdog_panel import WatchdogPanel
+from widgets.display_rotation_control import DisplayRotationControl
 
 import logging
 logger = logging.getLogger("dashboard")
@@ -401,100 +404,100 @@ class P3NocApp(App):
         margin: 0 1;
     }
 
-    /* AiServerStatusPanel & WatchdogPanel Theme styles */
-    .matrix-green AiServerStatusPanel, .matrix-green WatchdogPanel {
+    /* AiServerStatusPanel, DisplayRotationControl & WatchdogPanel Theme styles */
+    .matrix-green AiServerStatusPanel, .matrix-green DisplayRotationControl, .matrix-green WatchdogPanel {
         border: round #008800;
         background: #041404;
         color: #00ff00;
     }
-    .matrix-green AiServerStatusPanel:focus, .matrix-green WatchdogPanel:focus {
+    .matrix-green AiServerStatusPanel:focus, .matrix-green DisplayRotationControl:focus, .matrix-green WatchdogPanel:focus {
         border: double #00ff00;
     }
-    .matrix-green.wallboard-mode AiServerStatusPanel, .matrix-green.wallboard-mode WatchdogPanel {
+    .matrix-green.wallboard-mode AiServerStatusPanel, .matrix-green.wallboard-mode DisplayRotationControl, .matrix-green.wallboard-mode WatchdogPanel {
         border: double #00ff00;
     }
 
-    .amber-crt AiServerStatusPanel, .amber-crt WatchdogPanel {
+    .amber-crt AiServerStatusPanel, .amber-crt DisplayRotationControl, .amber-crt WatchdogPanel {
         border: round #aa7000;
         background: #140d00;
         color: #ffb000;
     }
-    .amber-crt AiServerStatusPanel:focus, .amber-crt WatchdogPanel:focus {
+    .amber-crt AiServerStatusPanel:focus, .amber-crt DisplayRotationControl:focus, .amber-crt WatchdogPanel:focus {
         border: double #ffb000;
     }
-    .amber-crt.wallboard-mode AiServerStatusPanel, .amber-crt.wallboard-mode WatchdogPanel {
+    .amber-crt.wallboard-mode AiServerStatusPanel, .amber-crt.wallboard-mode DisplayRotationControl, .amber-crt.wallboard-mode WatchdogPanel {
         border: double #ffb000;
     }
 
-    .cyber-blue AiServerStatusPanel, .cyber-blue WatchdogPanel {
+    .cyber-blue AiServerStatusPanel, .cyber-blue DisplayRotationControl, .cyber-blue WatchdogPanel {
         border: round #006699;
         background: #001222;
         color: #00f0ff;
     }
-    .cyber-blue AiServerStatusPanel:focus, .cyber-blue WatchdogPanel:focus {
+    .cyber-blue AiServerStatusPanel:focus, .cyber-blue DisplayRotationControl:focus, .cyber-blue WatchdogPanel:focus {
         border: double #00f0ff;
     }
-    .cyber-blue.wallboard-mode AiServerStatusPanel, .cyber-blue.wallboard-mode WatchdogPanel {
+    .cyber-blue.wallboard-mode AiServerStatusPanel, .cyber-blue.wallboard-mode DisplayRotationControl, .cyber-blue.wallboard-mode WatchdogPanel {
         border: double #00f0ff;
     }
 
-    .red-alert AiServerStatusPanel, .red-alert WatchdogPanel {
+    .red-alert AiServerStatusPanel, .red-alert DisplayRotationControl, .red-alert WatchdogPanel {
         border: round #880000;
         background: #220000;
         color: #ff3333;
     }
-    .red-alert AiServerStatusPanel:focus, .red-alert WatchdogPanel:focus {
+    .red-alert AiServerStatusPanel:focus, .red-alert DisplayRotationControl:focus, .red-alert WatchdogPanel:focus {
         border: double #ff3333;
     }
-    .red-alert.wallboard-mode AiServerStatusPanel, .red-alert.wallboard-mode WatchdogPanel {
+    .red-alert.wallboard-mode AiServerStatusPanel, .red-alert.wallboard-mode DisplayRotationControl, .red-alert.wallboard-mode WatchdogPanel {
         border: double #ff3333;
     }
 
-    .matrix AiServerStatusPanel, .matrix WatchdogPanel {
+    .matrix AiServerStatusPanel, .matrix DisplayRotationControl, .matrix WatchdogPanel {
         border: round #00ff00;
         background: #000000;
         color: #00ff00;
     }
-    .matrix AiServerStatusPanel:focus, .matrix WatchdogPanel:focus {
+    .matrix AiServerStatusPanel:focus, .matrix DisplayRotationControl:focus, .matrix WatchdogPanel:focus {
         border: double #00ff00;
     }
-    .matrix.wallboard-mode AiServerStatusPanel, .matrix.wallboard-mode WatchdogPanel {
+    .matrix.wallboard-mode AiServerStatusPanel, .matrix.wallboard-mode DisplayRotationControl, .matrix.wallboard-mode WatchdogPanel {
         border: double #00ff00;
     }
 
-    .bloomberg AiServerStatusPanel, .bloomberg WatchdogPanel {
+    .bloomberg AiServerStatusPanel, .bloomberg DisplayRotationControl, .bloomberg WatchdogPanel {
         border: round #0044bb;
         background: #000022;
         color: #ff8800;
     }
-    .bloomberg AiServerStatusPanel:focus, .bloomberg WatchdogPanel:focus {
+    .bloomberg AiServerStatusPanel:focus, .bloomberg DisplayRotationControl:focus, .bloomberg WatchdogPanel:focus {
         border: double #ff8800;
     }
-    .bloomberg.wallboard-mode AiServerStatusPanel, .bloomberg.wallboard-mode WatchdogPanel {
+    .bloomberg.wallboard-mode AiServerStatusPanel, .bloomberg.wallboard-mode DisplayRotationControl, .bloomberg.wallboard-mode WatchdogPanel {
         border: double #ff8800;
     }
 
-    .trading-desk AiServerStatusPanel, .trading-desk WatchdogPanel {
+    .trading-desk AiServerStatusPanel, .trading-desk DisplayRotationControl, .trading-desk WatchdogPanel {
         border: round #444444;
         background: #222222;
         color: #00ffff;
     }
-    .trading-desk AiServerStatusPanel:focus, .trading-desk WatchdogPanel:focus {
+    .trading-desk AiServerStatusPanel:focus, .trading-desk DisplayRotationControl:focus, .trading-desk WatchdogPanel:focus {
         border: double #00ffff;
     }
-    .trading-desk.wallboard-mode AiServerStatusPanel, .trading-desk.wallboard-mode WatchdogPanel {
+    .trading-desk.wallboard-mode AiServerStatusPanel, .trading-desk.wallboard-mode DisplayRotationControl, .trading-desk.wallboard-mode WatchdogPanel {
         border: double #00ffff;
     }
 
-    .midnight AiServerStatusPanel, .midnight WatchdogPanel {
+    .midnight AiServerStatusPanel, .midnight DisplayRotationControl, .midnight WatchdogPanel {
         border: round #333333;
         background: #000000;
         color: #ffffff;
     }
-    .midnight AiServerStatusPanel:focus, .midnight WatchdogPanel:focus {
+    .midnight AiServerStatusPanel:focus, .midnight DisplayRotationControl:focus, .midnight WatchdogPanel:focus {
         border: double #ffffff;
     }
-    .midnight.wallboard-mode AiServerStatusPanel, .midnight.wallboard-mode WatchdogPanel {
+    .midnight.wallboard-mode AiServerStatusPanel, .midnight.wallboard-mode DisplayRotationControl, .midnight.wallboard-mode WatchdogPanel {
         border: double #ffffff;
     }
     """
@@ -519,9 +522,11 @@ class P3NocApp(App):
         ("q", "quit_app", "Quit"),
     ]
 
-    def __init__(self, wallboard_mode=False, **kwargs):
+    def __init__(self, wallboard_mode=False, r510_mode=False, **kwargs):
         super().__init__(**kwargs)
         self.wallboard_mode = wallboard_mode
+        self.r510_mode = r510_mode or (socket.gethostname() == AI_SERVER_HOST)
+        self.remote_rotator_status = {}
         self.theme_index = 0
         self.logs_fullscreen = False
         
@@ -576,6 +581,17 @@ class P3NocApp(App):
         self.last_audit_date = None
         self.latest_report_path = None
         self.startup_safe_mode_active = False
+        self._last_critical_alarm_state = None
+
+        # Register cleanup on exit
+        atexit.register(self._cleanup_alarm_file)
+
+    def _cleanup_alarm_file(self):
+        try:
+            if os.path.exists("/tmp/p3-critical-alarm"):
+                os.remove("/tmp/p3-critical-alarm")
+        except Exception:
+            pass
 
     def safe_instantiate(self, widget_class, *args, **kwargs):
         """Safely instantiates a widget. If instantiation fails, returns a fallback Static widget."""
@@ -608,7 +624,10 @@ class P3NocApp(App):
                 yield self.safe_instantiate(OllamaPanel)
                 yield self.safe_instantiate(AlertPanel)
                 yield self.safe_instantiate(AutopilotPanel)
-                yield self.safe_instantiate(AiServerStatusPanel)
+                if self.r510_mode:
+                    yield self.safe_instantiate(DisplayRotationControl)
+                else:
+                    yield self.safe_instantiate(AiServerStatusPanel)
                 yield self.safe_instantiate(WatchdogPanel)
                 
         yield self.safe_instantiate(NewsFeed)
@@ -618,6 +637,9 @@ class P3NocApp(App):
 
     def on_mount(self):
         """Register loops and load start theme."""
+        # Clean up any leftover critical alarm file on start
+        self._cleanup_alarm_file()
+
         # 1. Apply default theme
         self.add_class(THEMES[self.theme_index])
         if self.wallboard_mode:
@@ -636,6 +658,8 @@ class P3NocApp(App):
         self.set_interval(10.0, self.run_ai_server_update)
         self.set_interval(1.0, self.run_flash_timer)
         self.set_interval(0.25, self.run_logo_flash_timer)
+        if self.r510_mode:
+            self.set_interval(3.0, self.run_remote_rotator_update)
 
         # 4. Trigger initial fetches
         self.run_status_and_logs_update()
@@ -643,6 +667,8 @@ class P3NocApp(App):
         self.run_btc_ticker_update()
         self.run_autopilot_cycle()
         self.run_ai_server_update()
+        if self.r510_mode:
+            self.run_remote_rotator_update()
 
     def activate_startup_safe_mode(self, reason: str):
         """Activates Safe Mode fallback on the dashboard."""
@@ -1090,7 +1116,10 @@ class P3NocApp(App):
             self.query_one(LogPanel).current_theme = new_theme
             self.query_one(TickerWidget).current_theme = new_theme
             self.query_one(AutopilotPanel).current_theme = new_theme
-            self.query_one(AiServerStatusPanel).current_theme = new_theme
+            if self.r510_mode:
+                self.query_one(DisplayRotationControl).current_theme = new_theme
+            else:
+                self.query_one(AiServerStatusPanel).current_theme = new_theme
             self.query_one(WatchdogPanel).current_theme = new_theme
         except Exception:
             pass
@@ -1277,6 +1306,7 @@ class P3NocApp(App):
             self.notify(f"Health recovery runbook execution error: {e}", severity="error")
 
     def action_quit_app(self):
+        self._cleanup_alarm_file()
         self.exit()
 
     def auto_rotate_focus(self):
@@ -1382,6 +1412,183 @@ class P3NocApp(App):
                 header.status_str = health_state.overall_status
         except Exception as e:
             logger.error(f"Error updating autopilot UI: {e}")
+
+    # --- R510 Remote Display Rotation Control Background Jobs & SSH Dispatches ---
+
+    def run_remote_rotator_update(self):
+        if self.startup_safe_mode_active:
+            return
+        self.run_worker(self._fetch_remote_rotator_job, thread=True)
+
+    def _fetch_remote_rotator_job(self):
+        import json
+        cmd = [
+            "ssh", "-o", "ConnectTimeout=2", "-o", "StrictHostKeyChecking=no",
+            f"{T310_USER}@{T310_IP}",
+            "python3 -c \""
+            "import os, json, subprocess; "
+            "is_active = False; "
+            "try: "
+            "    res = subprocess.run(['systemctl', 'is-active', 'p3-tty-rotator'], capture_output=True, text=True, timeout=1.5); "
+            "    is_active = (res.stdout.strip() == 'active'); "
+            "except: pass; "
+            "current_tty = None; "
+            "try: "
+            "    res = subprocess.run(['fgconsole'], capture_output=True, text=True, timeout=1.5); "
+            "    if res.returncode == 0: current_tty = int(res.stdout.strip()); "
+            "except: pass; "
+            "lock1 = os.path.exists('/tmp/p3-lock-tty1'); "
+            "lock2 = os.path.exists('/tmp/p3-lock-tty2'); "
+            "alarm = os.path.exists('/tmp/p3-critical-alarm'); "
+            "interval = 60; "
+            "try: "
+            "    if os.path.exists('/etc/p3/tty-rotator.conf'): "
+            "        with open('/etc/p3/tty-rotator.conf') as f: "
+            "            for line in f: "
+            "                if line.strip().startswith('ROTATION_INTERVAL='): "
+            "                    interval = int(line.split('=')[1].strip()); "
+            "except: pass; "
+            "last_switch_time = 'N/A'; "
+            "next_switch_seconds = 0; "
+            "next_switch_str = '00:00'; "
+            "try: "
+            "    if os.path.exists('/tmp/p3-tty-status.json'): "
+            "        with open('/tmp/p3-tty-status.json') as f: "
+            "            data = json.load(f); "
+            "            last_switch_time = data.get('last_switch_time', 'N/A'); "
+            "            next_switch_seconds = data.get('next_switch_seconds', 0); "
+            "            next_switch_str = data.get('next_switch_str', '00:00'); "
+            "except: pass; "
+            "status = 'PAUSED' if not is_active else ('CRITICAL NON-RECOVERABLE FAULT' if alarm else ('PAUSED' if (lock1 or lock2) else 'RUNNING')); "
+            "print(json.dumps({'status': status, 'current_tty': current_tty if current_tty else 'N/A', 'rotation_interval': interval, 'last_switch_time': last_switch_time, 'next_switch_seconds': next_switch_seconds, 'next_switch_str': next_switch_str, 'lock_tty1': lock1, 'lock_tty2': lock2, 'alarm_active': alarm}));\""
+        ]
+        
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=4.0)
+            if res.returncode == 0:
+                data = json.loads(res.stdout.strip())
+                self.app.call_from_thread(self._update_remote_rotator_ui, data)
+                return
+        except Exception as e:
+            logger.debug(f"Remote rotator status update failed: {e}")
+            
+        # Fallback to offline / simulation if failed or in local test mode
+        if not sys.platform.startswith("linux"):
+            self.app.call_from_thread(self._simulate_local_rotator_ui)
+        else:
+            self.app.call_from_thread(self._update_remote_rotator_ui, None)
+
+    def _simulate_local_rotator_ui(self):
+        import json
+        try:
+            lock_tty1 = os.path.exists("/tmp/p3-lock-tty1")
+            lock_tty2 = os.path.exists("/tmp/p3-lock-tty2")
+            alarm_active = os.path.exists("/tmp/p3-critical-alarm")
+            
+            interval = 60
+            if os.path.exists("/tmp/p3-mock-interval.txt"):
+                try:
+                    with open("/tmp/p3-mock-interval.txt", "r") as f:
+                        interval = int(f.read().strip())
+                except:
+                    pass
+            
+            status = "RUNNING"
+            if alarm_active:
+                status = "CRITICAL NON-RECOVERABLE FAULT"
+            elif lock_tty1 or lock_tty2:
+                status = "PAUSED"
+                
+            data = {
+                "status": status,
+                "current_tty": "2" if lock_tty2 else "1",
+                "rotation_interval": interval,
+                "last_switch_time": "12:00:00",
+                "next_switch_seconds": 30,
+                "next_switch_str": "00:30",
+                "lock_tty1": lock_tty1,
+                "lock_tty2": lock_tty2,
+                "alarm_active": alarm_active
+            }
+            self._update_remote_rotator_ui(data)
+        except Exception as e:
+            logger.error(f"Error in simulated rotator status check: {e}")
+
+    def _update_remote_rotator_ui(self, data):
+        try:
+            widget = self.query_one(DisplayRotationControl)
+            if data:
+                widget.status_str = data.get("status", "OFFLINE")
+                widget.current_tty = str(data.get("current_tty", "N/A"))
+                widget.rotation_interval = data.get("rotation_interval", 60)
+                widget.last_switch_time = data.get("last_switch_time", "N/A")
+                widget.next_switch_str = data.get("next_switch_str", "00:00")
+                widget.current_theme = THEMES[self.theme_index]
+                self.remote_rotator_status = data
+            else:
+                widget.status_str = "OFFLINE"
+                widget.current_tty = "N/A"
+                widget.rotation_interval = 60
+                widget.last_switch_time = "N/A"
+                widget.next_switch_str = "00:00"
+                widget.current_theme = THEMES[self.theme_index]
+                self.remote_rotator_status = {}
+        except Exception:
+            pass
+
+    def dispatch_remote_action(self, action_name, *args):
+        self.run_worker(lambda: self._execute_remote_action_job(action_name, *args), thread=True)
+
+    def _execute_remote_action_job(self, action_name, *args):
+        logger.info(f"Dispatching remote action: {action_name} with args {args}")
+        ssh_prefix = ["ssh", "-o", "ConnectTimeout=2", "-o", "StrictHostKeyChecking=no", f"{T310_USER}@{T310_IP}"]
+        
+        cmd = None
+        if action_name == "pause":
+            cmd = "sudo systemctl stop p3-tty-rotator"
+        elif action_name == "resume":
+            cmd = "sudo systemctl start p3-tty-rotator"
+        elif action_name == "lock_tty1":
+            cmd = "touch /tmp/p3-lock-tty1 && rm -f /tmp/p3-lock-tty2"
+        elif action_name == "lock_tty2":
+            cmd = "touch /tmp/p3-lock-tty2 && rm -f /tmp/p3-lock-tty1"
+        elif action_name == "resume_auto":
+            cmd = "rm -f /tmp/p3-lock-tty*"
+        elif action_name == "set_interval":
+            new_interval = args[0]
+            cmd = f"sudo mkdir -p /etc/p3 && echo 'ROTATION_INTERVAL={new_interval}' | sudo tee /etc/p3/tty-rotator.conf"
+            
+            if not sys.platform.startswith("linux"):
+                try:
+                    with open("/tmp/p3-mock-interval.txt", "w") as f:
+                        f.write(str(new_interval))
+                except:
+                    pass
+
+        if cmd:
+            if not sys.platform.startswith("linux"):
+                logger.info(f"[SIMULATION] SSH remote execution: {cmd}")
+                try:
+                    if action_name == "lock_tty1":
+                        with open("/tmp/p3-lock-tty1", "w") as f: f.write("1")
+                        if os.path.exists("/tmp/p3-lock-tty2"): os.remove("/tmp/p3-lock-tty2")
+                    elif action_name == "lock_tty2":
+                        with open("/tmp/p3-lock-tty2", "w") as f: f.write("1")
+                        if os.path.exists("/tmp/p3-lock-tty1"): os.remove("/tmp/p3-lock-tty1")
+                    elif action_name == "resume_auto":
+                        if os.path.exists("/tmp/p3-lock-tty1"): os.remove("/tmp/p3-lock-tty1")
+                        if os.path.exists("/tmp/p3-lock-tty2"): os.remove("/tmp/p3-lock-tty2")
+                except:
+                    pass
+            else:
+                try:
+                    res = subprocess.run(ssh_prefix + [cmd], capture_output=True, text=True, timeout=4.0)
+                    if res.returncode != 0:
+                        logger.error(f"Remote action {action_name} failed: {res.stderr.strip()}")
+                except Exception as e:
+                    logger.error(f"Failed to connect and run remote action {action_name}: {e}")
+                    
+        self._fetch_remote_rotator_job()
 
     # --- AI Server Monitoring Background Jobs & UI updates ---
 
@@ -1688,7 +1895,32 @@ class P3NocApp(App):
         except Exception:
             pass
 
-        alarm_active = self.criticalAlarmActive()
+        alarm_active = bool(self.criticalAlarmActive())
+
+        # Write/delete critical alarm override file on state change
+        if getattr(self, "_last_critical_alarm_state", None) != alarm_active:
+            try:
+                if alarm_active:
+                    alarms = []
+                    if not self.db_online: alarms.append("PostgreSQL down")
+                    if not self.worker_online: alarms.append("Worker offline")
+                    if self.disk_percent > 95.0: alarms.append("Disk > 95%")
+                    if self.fs_readonly: alarms.append("Filesystem read-only")
+                    if self.ipmi_fault: alarms.append("IPMI fault")
+                    if self.raid_failure: alarms.append("RAID failure")
+                    if self.ollama_is_critical: alarms.append("Ollama offline > 5m")
+                    if self.ai_server_is_critical or self.ai_server_critical_active: alarms.append("AI server unreachable/critical")
+                    
+                    alarm_msg = ", ".join(alarms) if alarms else "Unknown critical alarm"
+                    with open("/tmp/p3-critical-alarm", "w") as f:
+                        f.write(alarm_msg)
+                else:
+                    if os.path.exists("/tmp/p3-critical-alarm"):
+                        os.remove("/tmp/p3-critical-alarm")
+            except Exception as e:
+                logger.error(f"Failed to manage /tmp/p3-critical-alarm: {e}")
+            self._last_critical_alarm_state = alarm_active
+
         if alarm_active:
             self.logo_flash_phase = (self.logo_flash_phase + 1) % 2
             try:
@@ -1796,6 +2028,49 @@ Report generated autonomously by P3 NOC Autopilot.
             )
         except Exception as e:
             self.notify(f"Could not read report file: {e}", severity="error")
+
+    def on_key(self, event) -> None:
+        if self.r510_mode:
+            key = event.key
+            if key == "p":
+                event.prevent_default()
+                event.stop()
+                self.dispatch_remote_action("pause")
+                self.notify("Remote: Pausing Display Rotation")
+            elif key == "r":
+                event.prevent_default()
+                event.stop()
+                self.dispatch_remote_action("resume")
+                self.notify("Remote: Resuming Display Rotation")
+            elif key == "1":
+                event.prevent_default()
+                event.stop()
+                self.dispatch_remote_action("lock_tty1")
+                self.notify("Remote: Locking Display on TTY1 (P3 NOC)")
+            elif key == "2":
+                event.prevent_default()
+                event.stop()
+                self.dispatch_remote_action("lock_tty2")
+                self.notify("Remote: Locking Display on TTY2 (AI Server)")
+            elif key == "a":
+                event.prevent_default()
+                event.stop()
+                self.dispatch_remote_action("resume_auto")
+                self.notify("Remote: Resuming Automatic Rotation")
+            elif key in ("+", "="):
+                event.prevent_default()
+                event.stop()
+                current_interval = self.remote_rotator_status.get("rotation_interval", 60)
+                new_interval = min(300, current_interval + 15)
+                self.dispatch_remote_action("set_interval", new_interval)
+                self.notify(f"Remote: Interval set to {new_interval}s (+15s)")
+            elif key == "-":
+                event.prevent_default()
+                event.stop()
+                current_interval = self.remote_rotator_status.get("rotation_interval", 60)
+                new_interval = max(15, current_interval - 15)
+                self.dispatch_remote_action("set_interval", new_interval)
+                self.notify(f"Remote: Interval set to {new_interval}s (-15s)")
 
 # --- Weekly Report Dialog & Autopilot Helpers ---
 
@@ -1934,7 +2209,8 @@ class WeeklyReportDialog(ModalScreen):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="P3 NOC — Bitcoin Intelligence Operations Center")
     parser.add_argument("--wallboard", action="store_true", help="Launch in wallboard mode (auto-focus rotation, double border, no footer)")
+    parser.add_argument("--r510", action="store_true", help="Launch AI Server Dashboard (R510) mode with Remote Display Rotation Control")
     args = parser.parse_args()
 
-    app = P3NocApp(wallboard_mode=args.wallboard)
+    app = P3NocApp(wallboard_mode=args.wallboard, r510_mode=args.r510)
     app.run()

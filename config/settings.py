@@ -28,6 +28,11 @@ OLLAMA_CONTEXT_LIMIT = int(os.getenv("OLLAMA_CONTEXT_LIMIT", "40960"))
 AI_SERVER_HOST = os.getenv("AI_SERVER_HOST", "r510")
 AI_SERVER_IP = os.getenv("AI_SERVER_IP", "192.168.1.47")
 
+# T310 connection configurations for R510 Remote Control
+T310_HOST = os.getenv("T310_HOST", "p3noc")
+T310_IP = os.getenv("T310_IP", "192.168.1.158")
+T310_USER = os.getenv("T310_USER", "matt")
+
 # Systemd services to monitor
 SERVICE_WORKER = os.getenv("SERVICE_WORKER", "bitcoin-worker")
 SERVICE_INGEST = os.getenv("SERVICE_INGEST", "bitcoin-ingest")
