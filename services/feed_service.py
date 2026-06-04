@@ -2,6 +2,9 @@ import subprocess
 import os
 from config.settings import SERVICE_WORKER, SERVICE_INGEST
 
+import logging
+logger = logging.getLogger("dashboard")
+
 class FeedService:
     def __init__(self):
         self.worker_name = SERVICE_WORKER
@@ -11,8 +14,10 @@ class FeedService:
         """Run systemctl to check if a service is active. Fallback on non-systemd OS."""
         if os.name != "nt":  # Non-Windows, try systemctl
             try:
+                cmd = ["systemctl", "is-active", service_name]
+                logger.info(f"Executing subprocess: {cmd}")
                 res = subprocess.run(
-                    ["systemctl", "is-active", service_name],
+                    cmd,
                     capture_output=True,
                     text=True,
                     timeout=1.5

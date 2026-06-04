@@ -17,7 +17,9 @@ class RecoveryService:
         """Restart systemd worker service. Simulates on non-Linux."""
         if sys.platform.startswith("linux"):
             try:
-                subprocess.run(["sudo", "systemctl", "restart", SERVICE_WORKER], check=True)
+                cmd = ["sudo", "-n", "systemctl", "restart", SERVICE_WORKER]
+                logger.info(f"Executing subprocess: {cmd}")
+                subprocess.run(cmd, check=True)
                 logger.info("systemctl: restarted bitcoin-worker")
                 return True
             except Exception as e:
@@ -33,7 +35,9 @@ class RecoveryService:
         if sys.platform.startswith("linux"):
             try:
                 # User specified restarting the timer unit
-                subprocess.run(["sudo", "systemctl", "restart", timer_name], check=True)
+                cmd = ["sudo", "-n", "systemctl", "restart", timer_name]
+                logger.info(f"Executing subprocess: {cmd}")
+                subprocess.run(cmd, check=True)
                 logger.info(f"systemctl: restarted {timer_name}")
                 return True
             except Exception as e:
@@ -50,7 +54,9 @@ class RecoveryService:
             return False
         if sys.platform.startswith("linux"):
             try:
-                subprocess.run(["sudo", "systemctl", "restart", "ollama"], check=True)
+                cmd = ["sudo", "-n", "systemctl", "restart", "ollama"]
+                logger.info(f"Executing subprocess: {cmd}")
+                subprocess.run(cmd, check=True)
                 logger.info("systemctl: restarted ollama service")
             except Exception as e:
                 logger.error(f"Failed to restart ollama service: {e}")

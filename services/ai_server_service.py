@@ -30,6 +30,7 @@ class AiServerService:
             else:
                 cmd = ["ping", "-c", "1", "-W", "1", self.ip]
             
+            logger.info(f"Executing subprocess: {cmd}")
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
             latency = (time.time() - start) * 1000.0
             return (res.returncode == 0), latency

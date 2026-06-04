@@ -1628,7 +1628,9 @@ class P3NocApp(App):
         is_active = False
         if sys.platform.startswith("linux"):
             try:
-                res = subprocess.run(['systemctl', 'is-active', 'p3-tty-rotator'], capture_output=True, text=True, timeout=1.5)
+                cmd = ['systemctl', 'is-active', 'p3-tty-rotator']
+                logger.info(f"Executing subprocess: {cmd}")
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
                 is_active = (res.stdout.strip() == 'active')
             except Exception:
                 pass
@@ -1638,7 +1640,9 @@ class P3NocApp(App):
         current_tty = "N/A"
         if sys.platform.startswith("linux"):
             try:
-                res = subprocess.run(['fgconsole'], capture_output=True, text=True, timeout=1.5)
+                cmd = ['fgconsole']
+                logger.info(f"Executing subprocess: {cmd}")
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
                 if res.returncode == 0:
                     current_tty = str(res.stdout.strip())
             except Exception:
@@ -1757,6 +1761,7 @@ class P3NocApp(App):
         ]
         
         try:
+            logger.info(f"Executing subprocess: {cmd}")
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=4.0)
             if res.returncode == 0:
                 data = json.loads(res.stdout.strip())
@@ -1872,9 +1877,9 @@ class P3NocApp(App):
         logger.info(f"Executing local action: {action_name} with args {args}")
         cmd = None
         if action_name == "pause":
-            cmd = "sudo systemctl stop p3-tty-rotator"
+            cmd = "sudo -n systemctl stop p3-tty-rotator"
         elif action_name == "resume":
-            cmd = "sudo systemctl start p3-tty-rotator"
+            cmd = "sudo -n systemctl start p3-tty-rotator"
         elif action_name == "lock_tty1":
             cmd = "touch /tmp/p3-lock-tty1 && rm -f /tmp/p3-lock-tty2"
         elif action_name == "lock_tty2":
@@ -1883,7 +1888,7 @@ class P3NocApp(App):
             cmd = "rm -f /tmp/p3-lock-tty*"
         elif action_name == "set_interval":
             new_interval = args[0]
-            cmd = f"sudo mkdir -p /etc/p3 && echo 'ROTATION_INTERVAL={new_interval}' | sudo tee /etc/p3/tty-rotator.conf"
+            cmd = f"sudo -n mkdir -p /etc/p3 && echo 'ROTATION_INTERVAL={new_interval}' | sudo -n tee /etc/p3/tty-rotator.conf"
             try:
                 with open("/tmp/p3-mock-interval.txt", "w") as f:
                     f.write(str(new_interval))
@@ -1907,6 +1912,7 @@ class P3NocApp(App):
                     pass
             else:
                 try:
+                    logger.info(f"Executing subprocess: {cmd}")
                     res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=4.0)
                     if res.returncode != 0:
                         logger.error(f"Local action {action_name} failed: {res.stderr.strip()}")
@@ -2441,10 +2447,21 @@ class P3NocApp(App):
             except Exception:
                 pass
                 
+        if os.getenv("COMPATIBILITY_CHECK") == "true":
+            # Completely skip elevated privilege checks during compatibility testing to prevent prompts/blocking
+            return {
+                "disk_percent": disk_percent,
+                "fs_readonly": fs_readonly,
+                "ipmi_fault": False,
+                "raid_failure": False
+            }
+                
         ipmi_fault = os.getenv("MOCK_IPMI_FAULT", "false").lower() == "true"
         if not ipmi_fault and sys.platform.startswith("linux"):
             try:
-                res = subprocess.run(["sudo", "ipmitool", "sel", "elist"], capture_output=True, text=True, timeout=2.0)
+                cmd = ["sudo", "-n", "ipmitool", "sel", "elist"]
+                logger.info(f"Executing subprocess: {cmd}")
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
                 if res.returncode == 0:
                     for line in res.stdout.splitlines():
                         line_lower = line.lower()
@@ -2452,7 +2469,9 @@ class P3NocApp(App):
                             ipmi_fault = True
                             break
                 if not ipmi_fault:
-                    res = subprocess.run(["sudo", "ipmitool", "sensor"], capture_output=True, text=True, timeout=2.0)
+                    cmd = ["sudo", "-n", "ipmitool", "sensor"]
+                    logger.info(f"Executing subprocess: {cmd}")
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
                     if res.returncode == 0:
                         for line in res.stdout.splitlines():
                             parts = line.split('|')
@@ -2468,7 +2487,9 @@ class P3NocApp(App):
         if not raid_failure and sys.platform.startswith("linux"):
             for cmd in ["storcli", "perccli", "/opt/MegaRAID/storcli/storcli64", "/opt/MegaRAID/perccli/perccli64"]:
                 try:
-                    res = subprocess.run([cmd, "/c0", "show"], capture_output=True, text=True, timeout=3.0)
+                    cmd_list = [cmd, "/c0", "show"]
+                    logger.info(f"Executing subprocess: {cmd_list}")
+                    res = subprocess.run(cmd_list, capture_output=True, text=True, timeout=3.0)
                     if res.returncode == 0:
                         stdout_lower = res.stdout.lower()
                         if "degraded" in stdout_lower or "failed" in stdout_lower or "offline" in stdout_lower:
@@ -2481,7 +2502,9 @@ class P3NocApp(App):
             if not raid_failure:
                 for cmd in ["MegaCli", "MegaCli64", "/opt/MegaRAID/MegaCli/MegaCli64"]:
                     try:
-                        res = subprocess.run([cmd, "-AdpAllInfo", "-aAll"], capture_output=True, text=True, timeout=3.0)
+                        cmd_list = [cmd, "-AdpAllInfo", "-aAll"]
+                        logger.info(f"Executing subprocess: {cmd_list}")
+                        res = subprocess.run(cmd_list, capture_output=True, text=True, timeout=3.0)
                         if res.returncode == 0:
                             stdout_lower = res.stdout.lower()
                             if "degraded" in stdout_lower or "failed" in stdout_lower or "critical" in stdout_lower:

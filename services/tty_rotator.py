@@ -54,8 +54,10 @@ def is_service_active(service_name: str) -> bool:
     if not sys.platform.startswith("linux"):
         return True
     try:
+        cmd = ["systemctl", "is-active", service_name]
+        logger.info(f"Executing subprocess: {cmd}")
         res = subprocess.run(
-            ["systemctl", "is-active", service_name],
+            cmd,
             capture_output=True,
             text=True,
             timeout=2.0
@@ -92,7 +94,9 @@ def get_active_tty():
     if not sys.platform.startswith("linux"):
         return None
     try:
-        res = subprocess.run(["fgconsole"], capture_output=True, text=True, timeout=1.5)
+        cmd = ["fgconsole"]
+        logger.info(f"Executing subprocess: {cmd}")
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
         if res.returncode == 0:
             return int(res.stdout.strip())
     except Exception as e:
@@ -111,7 +115,9 @@ def switch_to_tty(target_tty: int) -> bool:
         return True
 
     try:
-        res = subprocess.run(["chvt", str(target_tty)], capture_output=True, text=True, timeout=2.0)
+        cmd = ["chvt", str(target_tty)]
+        logger.info(f"Executing subprocess: {cmd}")
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
         if res.returncode == 0:
             logger.info(f"Successfully switched to TTY {target_tty}")
             return True

@@ -103,12 +103,16 @@ class LogService:
         Fetch the latest N lines of worker logs.
         Attempts to use journalctl, falls back to mock logs.
         """
+        import logging
+        logger = logging.getLogger("dashboard")
         # Attempt to run journalctl if on Linux
         if os.name != "nt":  # Not Windows, let's try running systemctl
             try:
                 # Check if journalctl is available by testing it
+                cmd = ["journalctl", "-u", self.service_name, "-n", str(lines), "--no-pager"]
+                logger.info(f"Executing subprocess: {cmd}")
                 res = subprocess.run(
-                    ["journalctl", "-u", self.service_name, "-n", str(lines), "--no-pager"],
+                    cmd,
                     capture_output=True,
                     text=True,
                     timeout=2
