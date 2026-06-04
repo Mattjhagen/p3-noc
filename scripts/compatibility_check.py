@@ -17,7 +17,6 @@ from widgets.alert_panel import AlertPanel
 from widgets.runbook_panel import RunbookPanel
 from widgets.autopilot_panel import AutopilotPanel
 from widgets.news_feed import NewsFeed
-from widgets.log_panel import LogPanel
 from widgets.ticker import TickerWidget
 from widgets.display_rotation_control import DisplayRotationControl
 from widgets.ai_market_briefing import AiMarketBriefingWidget
@@ -38,7 +37,6 @@ def test_individual_widgets():
         ("RunbookPanel", RunbookPanel()),
         ("AutopilotPanel", AutopilotPanel()),
         ("NewsFeed", NewsFeed()),
-        ("LogPanel", LogPanel()),
         ("TickerWidget", TickerWidget()),
         ("DisplayRotationControl", DisplayRotationControl(is_readonly=False)),
         ("AiMarketBriefingWidget", AiMarketBriefingWidget()),

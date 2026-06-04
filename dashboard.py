@@ -35,7 +35,6 @@ from widgets.ollama_panel import OllamaPanel
 from widgets.alert_panel import AlertPanel
 from widgets.risk_radar import RiskRadar
 from widgets.news_feed import NewsFeed
-from widgets.log_panel import LogPanel
 from widgets.ticker import TickerWidget
 from widgets.sys_metrics_panel import SysMetricsPanel
 from widgets.risk_trend_panel import RiskTrendPanel
@@ -420,10 +419,7 @@ class P3NocApp(App):
         margin: 0 1 1 1;
     }
 
-    LogPanel {
-        height: 9;
-        margin: 0 1 1 1;
-    }
+
 
     TickerWidget {
         height: 3;
@@ -636,7 +632,7 @@ class P3NocApp(App):
     
     /* Layout & dimensions */
     AiMarketBriefingWidget {
-        height: 17;
+        height: 9;
         margin: 0 1 1 1;
     }
     """
@@ -772,7 +768,6 @@ class P3NocApp(App):
                 
         yield self.safe_instantiate(NewsFeed)
         yield self.safe_instantiate(AiMarketBriefingWidget)
-        yield self.safe_instantiate(LogPanel)
         yield self.safe_instantiate(TickerWidget)
         yield Footer()
 
@@ -790,31 +785,24 @@ class P3NocApp(App):
         if self.r510_mode:
             self.add_class("r510-mode")
 
-        # Hide LogPanel by default
-        try:
-            self.query_one(LogPanel).display = False
-        except Exception:
-            pass
+
 
         # Load initial cached briefing
         try:
             self.last_analyzed_id = self.db_service.get_latest_analysis_id()
-            cached = self.db_service.get_latest_cached_briefing()
+            cached = self._load_briefing_from_file()
             if cached:
-                self.last_briefing_time = cached.get("generated_at")
-                if isinstance(self.last_briefing_time, str):
+                updated_str = cached.get("updated", "")
+                if updated_str:
                     try:
-                        dt_str = self.last_briefing_time.split("+")[0].split(".")[0]
-                        self.last_briefing_time = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                        today = datetime.now()
+                        parsed_time = datetime.strptime(updated_str, "%I:%M %p")
+                        self.last_briefing_time = datetime.combine(today.date(), parsed_time.time())
                     except Exception:
                         self.last_briefing_time = datetime.utcnow()
-                self._update_briefing_ui(
-                    cached.get("market_state", "NEUTRAL"),
-                    cached.get("confidence", "N/A"),
-                    cached.get("briefing_text", ""),
-                    self.last_briefing_time,
-                    False
-                )
+                else:
+                    self.last_briefing_time = datetime.utcnow()
+                self._update_briefing_ui(cached)
         except Exception as e:
             logger.error(f"Failed to load initial cached briefing: {e}")
 
@@ -1084,12 +1072,7 @@ class P3NocApp(App):
         except Exception:
             pass
 
-        # Update Log panel
-        try:
-            log_panel = self.query_one(LogPanel)
-            log_panel.update_logs(logs)
-        except Exception:
-            pass
+
 
         # Update Alerts & Recommendations panel
         try:
@@ -1533,7 +1516,7 @@ class P3NocApp(App):
         widgets = [
             self.query_one(RiskRadar),
             self.query_one(NewsFeed),
-            self.query_one(LogPanel)
+            self.query_one(AiMarketBriefingWidget)
         ]
         current_focus = self.focused
         next_focus_index = 0
@@ -1959,136 +1942,247 @@ class P3NocApp(App):
             return
         self.run_worker(lambda: self._generate_briefing_job(manual), thread=True)
 
+    def _save_briefing_to_file(self, briefing):
+        try:
+            import json
+            from config.settings import BASE_DIR
+            cache_path = os.path.join(BASE_DIR, "briefing_cache.json")
+            with open(cache_path, "w") as f:
+                json.dump(briefing, f)
+        except Exception as e:
+            logger.error(f"Failed to save briefing to file cache: {e}")
+            try:
+                with open("/tmp/p3-briefing-cache.json", "w") as f:
+                    json.dump(briefing, f)
+            except Exception:
+                pass
+
+    def _load_briefing_from_file(self) -> dict:
+        try:
+            import json
+            from config.settings import BASE_DIR
+            cache_path = os.path.join(BASE_DIR, "briefing_cache.json")
+            if os.path.exists(cache_path):
+                with open(cache_path, "r") as f:
+                    return json.load(f)
+            elif os.path.exists("/tmp/p3-briefing-cache.json"):
+                with open("/tmp/p3-briefing-cache.json", "r") as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load briefing from file cache: {e}")
+        return None
+
     def _generate_briefing_job(self, manual=False):
         logger.info("Starting AI Market Briefing update job")
+        
+        # Local computed variables (defaults)
+        now_str = datetime.now().strftime("%I:%M %p")
+        market_state = "NEUTRAL"
+        confidence_str = "0%"
+        themes = ["Market consolidation", "Institutional flows", "ETF activity"]
+        risks = ["Macro uncertainty", "Regulatory headlines", "Reduced volume"]
+        outlook = "Range-bound with moderate volatility."
+        summary = "AI summary loading..."
+        ai_online = False
+
+        db_ok = False
+        articles = []
         try:
-            if not self.db_service.check_db_health():
-                self.db_online = False
-                self.app.call_from_thread(self._handle_briefing_error, "Database offline")
-                return
+            db_ok = self.db_service.check_db_health()
+            if db_ok:
+                articles = self.db_service.get_latest_analyzed_articles_for_briefing(limit=50)
+        except Exception as e:
+            logger.error(f"Database error during briefing generation: {e}")
+            db_ok = False
 
-            articles = self.db_service.get_latest_analyzed_articles_for_briefing(limit=10)
-            if not articles:
-                logger.info("No articles found for briefing.")
-                return
+        # Calculate values if we have database articles
+        if db_ok and articles:
+            try:
+                bull_count = 0
+                bear_count = 0
+                neutral_count = 0
+                
+                total_weight = 0
+                sentiment_weight = 0
+                
+                category_counts = {}
+                category_risk_scores = {}
+                
+                for art in articles:
+                    title = art.get("title", "")
+                    sentiment = str(art.get("sentiment", "")).upper()
+                    importance = float(art.get("importance_score") or 1)
+                    
+                    if "BULL" in sentiment:
+                        bull_count += 1
+                        total_weight += importance
+                        sentiment_weight += importance
+                    elif "BEAR" in sentiment:
+                        bear_count += 1
+                        total_weight += importance
+                        sentiment_weight -= importance
+                    else:
+                        neutral_count += 1
+                        total_weight += importance
+                    
+                    # Classify category
+                    category = classify_headline_impact(title)
+                    category_counts[category] = category_counts.get(category, 0) + 1
+                    
+                    risk_val = 0
+                    if "BEAR" in sentiment:
+                        risk_val = importance
+                    elif "BULL" not in sentiment:  # NEUTRAL
+                        risk_val = importance * 0.5
+                    
+                    category_risk_scores[category] = category_risk_scores.get(category, 0.0) + risk_val
 
-            latest_id = self.db_service.get_latest_analysis_id()
+                # Resolve Market State
+                if bull_count > bear_count:
+                    market_state = "BULLISH"
+                elif bear_count > bull_count:
+                    market_state = "BEARISH"
+                else:
+                    market_state = "NEUTRAL"
+                    
+                # Compute Confidence (0 - 100%)
+                if total_weight > 0:
+                    confidence_val = int(round((abs(sentiment_weight) / total_weight) * 100))
+                else:
+                    confidence_val = 0
+                confidence_str = f"{confidence_val}%"
+                    
+                # Compute Themes (Top 3 categories)
+                sorted_cats = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
+                THEME_MAP = {
+                    "ETF": "ETF activity",
+                    "WHALE": "Whale movements",
+                    "SECURITY": "Security protocols",
+                    "MINING": "Mining operations",
+                    "REGULATION": "Regulatory progress",
+                    "EXCHANGE": "Exchange flows",
+                    "MACRO": "Macroeconomics",
+                    "MARKET": "Market consolidation"
+                }
+                DEFAULT_THEMES = ["Market consolidation", "Institutional flows", "ETF activity"]
+                themes = []
+                for cat, _ in sorted_cats:
+                    theme_str = THEME_MAP.get(cat, "Market consolidation")
+                    if theme_str not in themes:
+                        themes.append(theme_str)
+                while len(themes) < 3:
+                    for default in DEFAULT_THEMES:
+                        if default not in themes:
+                            themes.append(default)
+                            break
+                    else:
+                        themes.append("Market consolidation")
+                themes = themes[:3]
 
-            context_lines = []
-            for art in articles:
-                title = art.get("title", "")
-                sentiment = art.get("sentiment", "NEUTRAL")
-                risk_score = art.get("importance_score", 0)
-                category = classify_headline_impact(title)
-                summary = art.get("summary", "")
-                summary_cropped = summary[:150] + "..." if len(summary) > 150 else summary
-                context_lines.append(
-                    f"Title: {title}\n"
-                    f"Sentiment: {sentiment}\n"
-                    f"Risk Score: {risk_score}\n"
-                    f"Category: {category}\n"
-                    f"Summary: {summary_cropped}"
+                # Compute Risks (Top 3 negative categories)
+                sorted_risks = sorted(category_risk_scores.items(), key=lambda x: x[1], reverse=True)
+                RISK_MAP = {
+                    "ETF": "ETF outflows",
+                    "WHALE": "Whale selling pressure",
+                    "SECURITY": "Vulnerabilities/hacks",
+                    "MINING": "Miner capitulation",
+                    "REGULATION": "Regulatory headlines",
+                    "EXCHANGE": "Exchange outflows",
+                    "MACRO": "Macro uncertainty",
+                    "MARKET": "Reduced volume"
+                }
+                DEFAULT_RISKS = ["Macro uncertainty", "Regulatory headlines", "Reduced volume"]
+                risks = []
+                for cat, score in sorted_risks:
+                    if score > 0:
+                        risk_str = RISK_MAP.get(cat, "Reduced volume")
+                        if risk_str not in risks:
+                            risks.append(risk_str)
+                while len(risks) < 3:
+                    for default in DEFAULT_RISKS:
+                        if default not in risks:
+                            risks.append(default)
+                            break
+                    else:
+                        risks.append("Reduced volume")
+                risks = risks[:3]
+
+                # Compute Outlook
+                if market_state == "BULLISH":
+                    outlook = "Upside momentum with positive sentiment."
+                elif market_state == "BEARISH":
+                    outlook = "Downside pressure with support testing."
+                else:
+                    outlook = "Range-bound with moderate volatility."
+
+            except Exception as e:
+                logger.error(f"Error computing local market data: {e}")
+
+        # Now query Ollama *only* for the single summary sentence
+        ollama_ok = False
+        if db_ok and articles:
+            try:
+                # Compile headlines
+                headlines = [art.get("title", "") for art in articles[:15]]
+                headlines_str = "\n".join(f"- {h}" for h in headlines)
+                
+                prompt_text = (
+                    f"headlines:\n{headlines_str}\n\n"
+                    "Synthesize a concise one-sentence operator briefing from these market headlines."
                 )
+                
+                url = f"{self.ollama_service.url}/api/generate"
+                payload = {
+                    "model": self.ollama_model,
+                    "prompt": prompt_text,
+                    "stream": False
+                }
+                
+                import requests
+                res = requests.post(url, json=payload, timeout=8.0)
+                if res.status_code == 200:
+                    summary = res.json().get("response", "").strip()
+                    summary = summary.replace('"', '').replace('`', '').strip()
+                    ollama_ok = True
+                    ai_online = True
+                else:
+                    logger.warning(f"Ollama returned HTTP status {res.status_code}")
+            except Exception as e:
+                logger.warning(f"Ollama query failed: {e}")
 
-            context_str = "\n---\n".join(context_lines)
-
-            system_prompt = (
-                "You are a financial analyst specializing in crypto market operations. "
-                "Analyze the provided list of recent articles (including sentiment, risk scores, impact categories, and summaries) "
-                "and generate a highly concise market briefing in the EXACT format below. Do not include any introductory or concluding text. "
-                "Keep the themes, risks, and outlook short (no wrapping, max 70 characters per bullet point, max 76 characters for outlook) "
-                "so it fits perfectly on a NOC wallboard dashboard. "
-                "Do not use markdown formatting (like bold **, italics, etc) in your responses.\n\n"
-                "REQUIRED FORMAT:\n"
-                "MARKET STATE: <BULLISH, BEARISH, or NEUTRAL>\n"
-                "THEMES\n"
-                "• <Theme 1 summary, max 70 chars>\n"
-                "• <Theme 2 summary, max 70 chars>\n"
-                "RISKS\n"
-                "• <Risk 1 summary, max 70 chars>\n"
-                "• <Risk 2 summary, max 70 chars>\n"
-                "24H OUTLOOK\n"
-                "<Outlook text, single sentence, max 76 chars>\n"
-                "CONFIDENCE: <Confidence percentage, e.g., 85%>"
-            )
-
-            prompt_text = f"Analyze the following 10 recent crypto market articles and generate the NOC briefing:\n\n{context_str}"
-
-            url = f"{self.ollama_service.url}/api/generate"
-            payload = {
-                "model": self.ollama_model,
-                "system": system_prompt,
-                "prompt": prompt_text,
-                "stream": False
-            }
-
-            import requests
-            res = requests.post(url, json=payload, timeout=30.0)
-            if res.status_code == 200:
-                response_json = res.json()
-                text = response_json.get("response", "")
-
-                market_state = "NEUTRAL"
-                confidence = "80%"
-
-                lines = [l.strip() for l in text.splitlines() if l.strip()]
-                for line in lines:
-                    line_upper = line.upper()
-                    if line_upper.startswith("MARKET STATE:"):
-                        state_val = line.split(":", 1)[1].strip().upper()
-                        if "BULL" in state_val:
-                            market_state = "BULLISH"
-                        elif "BEAR" in state_val:
-                            market_state = "BEARISH"
-                        else:
-                            market_state = "NEUTRAL"
-                    elif line_upper.startswith("CONFIDENCE:"):
-                        confidence = line.split(":", 1)[1].strip()
-
-                self.db_service.save_briefing_to_cache(market_state, confidence, text)
-
-                self.last_analyzed_id = latest_id
-                self.last_briefing_time = datetime.utcnow()
-
-                self.app.call_from_thread(self._update_briefing_ui, market_state, confidence, text, datetime.utcnow(), False)
-            else:
-                logger.error(f"Ollama briefing generation failed: HTTP {res.status_code}")
-                self.app.call_from_thread(self._handle_briefing_error, f"Ollama HTTP {res.status_code}")
-
-        except Exception as e:
-            logger.error(f"Error generating briefing: {e}")
-            self.app.call_from_thread(self._handle_briefing_error, str(e))
-
-    def _handle_briefing_error(self, error_msg):
-        logger.warning(f"Briefing update failed, falling back to cache: {error_msg}")
-        try:
-            cached = self.db_service.get_latest_cached_briefing()
+        # If Ollama is offline or query failed, load the cached summary
+        if not ollama_ok:
+            cached = self._load_briefing_from_file()
             if cached:
-                market_state = cached.get("market_state", "NEUTRAL")
-                confidence = cached.get("confidence", "N/A")
-                briefing_text = cached.get("briefing_text", "")
-                generated_at = cached.get("generated_at")
-                if isinstance(generated_at, str):
-                    try:
-                        dt_str = generated_at.split("+")[0].split(".")[0]
-                        generated_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-                    except Exception:
-                        generated_at = datetime.utcnow()
-                self._update_briefing_ui(market_state, confidence, briefing_text, generated_at, True)
+                summary = cached.get("summary", "Bitcoin remains range-bound today as traders react to mixed market signals.")
             else:
-                widget = self.query_one(AiMarketBriefingWidget)
-                widget.stale_mode = True
-        except Exception as e:
-            logger.error(f"Failed to load cached briefing during fallback: {e}")
+                summary = "Bitcoin remains range-bound today as traders react to mixed market signals."
+            ai_online = False
 
-    def _update_briefing_ui(self, market_state, confidence, briefing_text, generated_at, stale_mode):
+        # Assemble the final briefing data object
+        briefing_object = {
+            "summary": summary,
+            "market_state": market_state,
+            "confidence": confidence_str,
+            "themes": themes,
+            "risks": risks,
+            "outlook": outlook,
+            "updated": now_str,
+            "ai_online": ai_online
+        }
+
+        # If Ollama query succeeded, we save this newly generated briefing object to cache
+        if ollama_ok:
+            self._save_briefing_to_file(briefing_object)
+            
+        # Update the UI
+        self.last_briefing_time = datetime.utcnow()
+        self.app.call_from_thread(self._update_briefing_ui, briefing_object)
+
+    def _update_briefing_ui(self, briefing_object):
         try:
             widget = self.query_one(AiMarketBriefingWidget)
-            widget.market_state = market_state
-            widget.confidence = confidence
-            widget.briefing_text = briefing_text
-            widget.generated_at = generated_at
-            widget.stale_mode = stale_mode
+            widget.briefing_data = briefing_object
             widget.current_theme = THEMES[self.theme_index]
         except Exception as e:
             logger.error(f"Failed to update briefing UI: {e}")
@@ -2549,17 +2643,7 @@ Report generated autonomously by P3 NOC Autopilot.
 
         key = event.key
 
-        # Hidden diagnostic hotkey Shift+L (Textual maps Shift+L as "L")
-        if key == "L":
-            event.prevent_default()
-            event.stop()
-            try:
-                log_panel = self.query_one(LogPanel)
-                log_panel.display = not log_panel.display
-                self.notify("Diagnostic logs " + ("shown" if log_panel.display else "hidden"))
-            except Exception as e:
-                logger.error(f"Failed to toggle LogPanel: {e}")
-            return
+
 
         # A / a: Refresh AI Briefing Now
         if key in ("A", "a"):
