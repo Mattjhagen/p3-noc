@@ -18,8 +18,8 @@ from dashboard import classify_headline_impact
 
 def main():
     logger.info("Initializing services...")
-    db_service = DBService(DATABASE_URL)
-    ollama_service = OllamaService(OLLAMA_URL)
+    db_service = DBService()
+    ollama_service = OllamaService()
     
     db_ok = db_service.check_db_health()
     logger.info(f"Database health: {'ONLINE' if db_ok else 'OFFLINE'}")
