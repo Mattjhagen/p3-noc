@@ -173,7 +173,7 @@ def main():
             "model": OLLAMA_MODEL,
             "prompt": prompt_text,
             "stream": False
-        }, timeout=15.0)
+        }, timeout=45.0)
         
         logger.info(f"Ollama response status: {res.status_code}")
         if res.status_code == 200:
@@ -199,8 +199,9 @@ def main():
     
     # Save cache
     try:
-        from config.settings import BASE_DIR
-        cache_path = os.path.join(BASE_DIR, "briefing_cache.json")
+        cache_dir = "/opt/p3-noc/cache"
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, "market_briefing.json")
         logger.info(f"Saving cache to {cache_path}...")
         with open(cache_path, "w") as f:
             json.dump(briefing_object, f)
