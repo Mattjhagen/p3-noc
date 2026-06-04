@@ -62,6 +62,20 @@ class AiServerService:
             logger.debug(f"Ollama endpoint check failed for AI Server {self.ip}: {e}")
             return False
 
+    def verify_ollama_port(self) -> bool:
+        """
+        Checks TCP port 11434 connectivity on R510.
+        """
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1.5)
+            result = sock.connect_ex((self.ip, int(self.ollama_port)))
+            sock.close()
+            return result == 0
+        except Exception as e:
+            logger.debug(f"Ollama port check failed for AI Server {self.ip}: {e}")
+            return False
+
     def perform_full_check(self) -> dict:
         """
         Executes ping, SSH, and Ollama checks.
@@ -69,6 +83,7 @@ class AiServerService:
         """
         ping_ok, ping_lat = self.ping_host()
         ssh_ok = self.verify_ssh()
+        ollama_port_ok = self.verify_ollama_port()
         ollama_ok = self.verify_ollama()
 
         # GREEN: R510 reachable, SSH reachable, Ollama reachable
@@ -86,6 +101,7 @@ class AiServerService:
             "ping_ok": ping_ok,
             "ping_latency": ping_lat if ping_ok else 0.0,
             "ssh_ok": ssh_ok,
+            "ollama_port_ok": ollama_port_ok,
             "ollama_ok": ollama_ok,
             "timestamp": time.time()
         }

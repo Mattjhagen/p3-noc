@@ -178,6 +178,12 @@ class AutopilotService:
         ollama_fails = telemetry.get("ollama_failures", 0)
         ai_server_state = telemetry.get("ai_server_status", "GREEN")
         
+        # Hardware checks
+        disk_percent = telemetry.get("disk_percent", 0.0)
+        fs_readonly = telemetry.get("fs_readonly", False)
+        ipmi_fault = telemetry.get("ipmi_fault", False)
+        raid_failure = telemetry.get("raid_failure", False)
+        
         if not db_ok:
             score -= 30
             issues.append("PostgreSQL Connection Offline")
@@ -199,6 +205,20 @@ class AutopilotService:
         if processing_count > 5 and oldest_age > 15:
             score -= 10
             issues.append(f"Queue Jam: processing job age > {oldest_age}m")
+            
+        # Hardware fault deductions
+        if disk_percent > 95.0:
+            score -= 20
+            issues.append(f"Disk usage > 95% ({disk_percent:.1f}%)")
+        if fs_readonly:
+            score -= 40
+            issues.append("Filesystem mounted Read-Only")
+        if ipmi_fault:
+            score -= 25
+            issues.append("Critical Hardware Fault via IPMI")
+        if raid_failure:
+            score -= 30
+            issues.append("RAID Controller/Battery Failure")
 
         # --- Self-Healing Rules Engine ---
         # Rule 1: Ollama Offline / Timeout Spike

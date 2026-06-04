@@ -43,6 +43,10 @@ class HeaderWidget(Widget):
     
     current_theme = reactive("matrix-green")
     compact_mode = reactive(False)
+    
+    # Critical Alarm Reactives
+    critical_alarm_active = reactive(False)
+    logo_flash_phase = reactive(0)
 
     def render(self) -> Align:
         theme = THEME_COLORS.get(self.current_theme, THEME_COLORS["matrix-green"])
@@ -83,24 +87,60 @@ class HeaderWidget(Widget):
                 else:
                     ai_banner = Text(" [🚨 CHECK AI SERVER (R510) 🚨] ", style="bold red")
 
+        # Determine logo styling and borders
+        if self.critical_alarm_active:
+            # Alternating colors: Phase 0 = Green, Phase 1 = Red
+            if self.logo_flash_phase == 0:
+                logo_style = "bold bright_green on black"
+                compact_style = "bold white on green"
+            else:
+                logo_style = "bold bright_red on black"
+                compact_style = "bold white on red"
+
+            # Wrap logo in an ASCII alarm border
+            logo_lines = [line for line in LOGO_ASCII.splitlines() if line.strip()]
+            max_len = max(len(line) for line in logo_lines)
+            bordered_lines = []
+            bordered_lines.append(f"┌─{'─' * max_len}─┐")
+            for line in logo_lines:
+                padded = line.ljust(max_len)
+                bordered_lines.append(f"│ {padded} │")
+            bordered_lines.append(f"└─{'─' * max_len}─┘")
+            logo_text = Text("\n".join(bordered_lines) + "\n", style=logo_style)
+
+            # Define the flashing alert banner
+            if self.logo_flash_phase == 0:
+                alert_banner = Text("\n🚨 CRITICAL SYSTEM FAULT - OPERATOR INTERVENTION REQUIRED 🚨\n", style="bold white on red")
+            else:
+                alert_banner = Text("\n🚨 CRITICAL SYSTEM FAULT - OPERATOR INTERVENTION REQUIRED 🚨\n", style="bold red on white")
+        else:
+            # Healthy: Green on black logo
+            logo_style = "bold bright_green on black"
+            logo_text = Text(LOGO_ASCII, style=logo_style)
+            compact_style = f"bold reverse {primary_color}"
+            alert_banner = Text()
+
         # Build ASCII branding header if NOT in compact mode
         header_text = Text()
         if not self.compact_mode:
-            logo = Text(LOGO_ASCII, style=primary_color)
+            header_text.append(logo_text)
             sub = Text("P3 NOC — Bitcoin Intelligence Operations Center      ", style=f"bold {primary_color}")
-            header_text.append(logo)
             header_text.append(sub)
             header_text.append(status_banner)
             header_text.append(" ")
             header_text.append(ai_banner)
+            if self.critical_alarm_active:
+                header_text.append(alert_banner)
             header_text.append("\n")
         else:
             # Minimal compact logo
-            header_text.append(Text(" P3 NOC ", style=f"bold reverse {primary_color}"))
+            header_text.append(Text(" P3 NOC ", style=compact_style))
             header_text.append(Text("   "))
             header_text.append(status_banner)
             header_text.append(" ")
             header_text.append(ai_banner)
+            if self.critical_alarm_active:
+                header_text.append(alert_banner)
             header_text.append(Text("\n"))
 
         # Build the Executive Summary Banner text

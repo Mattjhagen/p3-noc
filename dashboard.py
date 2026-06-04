@@ -2,6 +2,7 @@
 import argparse
 import sys
 import os
+import time
 import subprocess
 import psutil
 from datetime import datetime
@@ -40,9 +41,24 @@ from widgets.confirmation_dialog import ConfirmationDialog
 from widgets.runbook_panel import RunbookPanel
 from widgets.autopilot_panel import AutopilotPanel
 from widgets.ai_server_status_panel import AiServerStatusPanel
+from widgets.watchdog_panel import WatchdogPanel
 
 import logging
 logger = logging.getLogger("dashboard")
+
+class CallableBool:
+    def __init__(self, value: bool):
+        self.value = bool(value)
+    def __bool__(self) -> bool:
+        return self.value
+    def __call__(self) -> bool:
+        return self.value
+    def __eq__(self, other) -> bool:
+        return self.value == other
+    def __repr__(self) -> str:
+        return repr(self.value)
+    def __str__(self) -> str:
+        return str(self.value)
 
 def safe_widget(widget, app_ref):
     """
@@ -365,8 +381,8 @@ class P3NocApp(App):
 
     #right-col {
         layout: grid;
-        grid-size: 1 4;
-        grid-rows: 1fr 1fr 1.3fr 1.2fr; /* Ollama, Alerts, Autopilot, AiServerStatus */
+        grid-size: 1 5;
+        grid-rows: 1fr 1fr 1.2fr 1.1fr 1.1fr; /* Ollama, Alerts, Autopilot, AiServerStatus, Watchdog */
         grid-gutter: 1;
     }
 
@@ -385,100 +401,100 @@ class P3NocApp(App):
         margin: 0 1;
     }
 
-    /* AiServerStatusPanel Theme styles */
-    .matrix-green AiServerStatusPanel {
+    /* AiServerStatusPanel & WatchdogPanel Theme styles */
+    .matrix-green AiServerStatusPanel, .matrix-green WatchdogPanel {
         border: round #008800;
         background: #041404;
         color: #00ff00;
     }
-    .matrix-green AiServerStatusPanel:focus {
+    .matrix-green AiServerStatusPanel:focus, .matrix-green WatchdogPanel:focus {
         border: double #00ff00;
     }
-    .matrix-green.wallboard-mode AiServerStatusPanel {
+    .matrix-green.wallboard-mode AiServerStatusPanel, .matrix-green.wallboard-mode WatchdogPanel {
         border: double #00ff00;
     }
 
-    .amber-crt AiServerStatusPanel {
+    .amber-crt AiServerStatusPanel, .amber-crt WatchdogPanel {
         border: round #aa7000;
         background: #140d00;
         color: #ffb000;
     }
-    .amber-crt AiServerStatusPanel:focus {
+    .amber-crt AiServerStatusPanel:focus, .amber-crt WatchdogPanel:focus {
         border: double #ffb000;
     }
-    .amber-crt.wallboard-mode AiServerStatusPanel {
+    .amber-crt.wallboard-mode AiServerStatusPanel, .amber-crt.wallboard-mode WatchdogPanel {
         border: double #ffb000;
     }
 
-    .cyber-blue AiServerStatusPanel {
+    .cyber-blue AiServerStatusPanel, .cyber-blue WatchdogPanel {
         border: round #006699;
         background: #001222;
         color: #00f0ff;
     }
-    .cyber-blue AiServerStatusPanel:focus {
+    .cyber-blue AiServerStatusPanel:focus, .cyber-blue WatchdogPanel:focus {
         border: double #00f0ff;
     }
-    .cyber-blue.wallboard-mode AiServerStatusPanel {
+    .cyber-blue.wallboard-mode AiServerStatusPanel, .cyber-blue.wallboard-mode WatchdogPanel {
         border: double #00f0ff;
     }
 
-    .red-alert AiServerStatusPanel {
+    .red-alert AiServerStatusPanel, .red-alert WatchdogPanel {
         border: round #880000;
         background: #220000;
         color: #ff3333;
     }
-    .red-alert AiServerStatusPanel:focus {
+    .red-alert AiServerStatusPanel:focus, .red-alert WatchdogPanel:focus {
         border: double #ff3333;
     }
-    .red-alert.wallboard-mode AiServerStatusPanel {
+    .red-alert.wallboard-mode AiServerStatusPanel, .red-alert.wallboard-mode WatchdogPanel {
         border: double #ff3333;
     }
 
-    .matrix AiServerStatusPanel {
+    .matrix AiServerStatusPanel, .matrix WatchdogPanel {
         border: round #00ff00;
         background: #000000;
         color: #00ff00;
     }
-    .matrix AiServerStatusPanel:focus {
+    .matrix AiServerStatusPanel:focus, .matrix WatchdogPanel:focus {
         border: double #00ff00;
     }
-    .matrix.wallboard-mode AiServerStatusPanel {
+    .matrix.wallboard-mode AiServerStatusPanel, .matrix.wallboard-mode WatchdogPanel {
         border: double #00ff00;
     }
 
-    .bloomberg AiServerStatusPanel {
+    .bloomberg AiServerStatusPanel, .bloomberg WatchdogPanel {
         border: round #0044bb;
         background: #000022;
         color: #ff8800;
     }
-    .bloomberg AiServerStatusPanel:focus {
+    .bloomberg AiServerStatusPanel:focus, .bloomberg WatchdogPanel:focus {
         border: double #ff8800;
     }
-    .bloomberg.wallboard-mode AiServerStatusPanel {
+    .bloomberg.wallboard-mode AiServerStatusPanel, .bloomberg.wallboard-mode WatchdogPanel {
         border: double #ff8800;
     }
 
-    .trading-desk AiServerStatusPanel {
+    .trading-desk AiServerStatusPanel, .trading-desk WatchdogPanel {
         border: round #444444;
         background: #222222;
         color: #00ffff;
     }
-    .trading-desk AiServerStatusPanel:focus {
+    .trading-desk AiServerStatusPanel:focus, .trading-desk WatchdogPanel:focus {
         border: double #00ffff;
     }
-    .trading-desk.wallboard-mode AiServerStatusPanel {
+    .trading-desk.wallboard-mode AiServerStatusPanel, .trading-desk.wallboard-mode WatchdogPanel {
         border: double #00ffff;
     }
 
-    .midnight AiServerStatusPanel {
+    .midnight AiServerStatusPanel, .midnight WatchdogPanel {
         border: round #333333;
         background: #000000;
         color: #ffffff;
     }
-    .midnight AiServerStatusPanel:focus {
+    .midnight AiServerStatusPanel:focus, .midnight WatchdogPanel:focus {
         border: double #ffffff;
     }
-    .midnight.wallboard-mode AiServerStatusPanel {
+    .midnight.wallboard-mode AiServerStatusPanel, .midnight.wallboard-mode WatchdogPanel {
         border: double #ffffff;
     }
     """
@@ -536,6 +552,20 @@ class P3NocApp(App):
         self.ai_server_first_offline = None
         self.ai_server_flash_toggle = False
         
+        # Hardware fault states & Watchdog diagnostics
+        self.app_start_time = time.time()
+        self.disk_percent = 0.0
+        self.fs_readonly = False
+        self.ipmi_fault = False
+        self.raid_failure = False
+        self.ollama_first_offline = None
+        self.ollama_is_critical = False
+        self.logo_flash_phase = 0
+        self.oldest_processing_age = 0.0
+        self.ai_server_tags_first_fail = None
+        self.ai_server_critical_active = False
+        self.status_fetched_once = False
+        
         # Cache OLLAMA configurations
         self.ollama_model = OLLAMA_MODEL
         
@@ -579,6 +609,7 @@ class P3NocApp(App):
                 yield self.safe_instantiate(AlertPanel)
                 yield self.safe_instantiate(AutopilotPanel)
                 yield self.safe_instantiate(AiServerStatusPanel)
+                yield self.safe_instantiate(WatchdogPanel)
                 
         yield self.safe_instantiate(NewsFeed)
         yield self.safe_instantiate(LogPanel)
@@ -604,6 +635,7 @@ class P3NocApp(App):
         self.set_interval(60.0, self.run_autopilot_cycle)
         self.set_interval(10.0, self.run_ai_server_update)
         self.set_interval(1.0, self.run_flash_timer)
+        self.set_interval(0.25, self.run_logo_flash_timer)
 
         # 4. Trigger initial fetches
         self.run_status_and_logs_update()
@@ -721,18 +753,103 @@ class P3NocApp(App):
             # Fetch host RAM usage to feed Smart Recommendations
             ram = psutil.virtual_memory().percent
             
+            # Layered hardware health check
+            hw_status = self._check_hardware_health()
+            
             self.app.call_from_thread(
                 self._update_status_and_logs_ui,
-                worker_active, ingest_active, db_active, ollama_stats, logs, ram
+                worker_active, ingest_active, db_active, ollama_stats, logs, ram, hw_status
             )
         except Exception:
             pass
 
-    def _update_status_and_logs_ui(self, worker, ingest, db, ollama_stats, logs, ram):
+    def _update_status_and_logs_ui(self, worker, ingest, db, ollama_stats, logs, ram, hw_status):
+        ollama_online_now = ollama_stats["status"] == "ONLINE"
+        disk_percent = hw_status["disk_percent"]
+        fs_readonly = hw_status["fs_readonly"]
+        ipmi_fault = hw_status["ipmi_fault"]
+        raid_failure = hw_status["raid_failure"]
+
+        # Check and log transition events to operations_log
+        if self.status_fetched_once:
+            if self.db_online != db:
+                severity = "CRITICAL" if not db else "INFO"
+                event = "PostgreSQL Connection Offline" if not db else "PostgreSQL Connection Restored"
+                action_taken = "Checked PostgreSQL port/socket connectivity"
+                result = "ALERT" if not db else "RECOVERY"
+                self.db_service.log_operations_event(severity, event, action_taken, result)
+
+            if self.worker_online != worker:
+                severity = "CRITICAL" if not worker else "INFO"
+                event = "Bitcoin Worker service stopped" if not worker else "Bitcoin Worker service started"
+                action_taken = "Checked systemd service status"
+                result = "ALERT" if not worker else "RECOVERY"
+                self.db_service.log_operations_event(severity, event, action_taken, result)
+
+            if self.ingest_online != ingest:
+                severity = "CRITICAL" if not ingest else "INFO"
+                event = "RSS Ingest Timer service inactive" if not ingest else "RSS Ingest Timer service active"
+                action_taken = "Checked systemd timer status"
+                result = "ALERT" if not ingest else "RECOVERY"
+                self.db_service.log_operations_event(severity, event, action_taken, result)
+
+            if self.ollama_online != ollama_online_now:
+                severity = "CRITICAL" if not ollama_online_now else "INFO"
+                event = "Ollama endpoint offline" if not ollama_online_now else "Ollama endpoint restored"
+                action_taken = "Checked Ollama tag endpoint status"
+                result = "ALERT" if not ollama_online_now else "RECOVERY"
+                self.db_service.log_operations_event(severity, event, action_taken, result)
+
+            disk_critical_prev = self.disk_percent > 95.0
+            disk_critical_now = disk_percent > 95.0
+            if disk_critical_prev != disk_critical_now:
+                severity = "CRITICAL" if disk_critical_now else "INFO"
+                event = f"Disk usage exceeded 95% ({disk_percent:.1f}%)" if disk_critical_now else "Disk usage returned below 95%"
+                action_taken = "Checked local disk space usage"
+                result = "ALERT" if disk_critical_now else "RECOVERY"
+                self.db_service.log_operations_event(severity, event, action_taken, result)
+
+            if self.fs_readonly != fs_readonly:
+                severity = "CRITICAL" if fs_readonly else "INFO"
+                event = "Filesystem mounted read-only" if fs_readonly else "Filesystem remounted read-write"
+                action_taken = "Checked filesystem mount options"
+                result = "ALERT" if fs_readonly else "RECOVERY"
+                self.db_service.log_operations_event(severity, event, action_taken, result)
+
+            if self.ipmi_fault != ipmi_fault:
+                severity = "CRITICAL" if ipmi_fault else "INFO"
+                event = "Critical hardware fault detected via IPMI" if ipmi_fault else "IPMI hardware fault cleared"
+                action_taken = "Checked IPMI chassis and sensor logs"
+                result = "ALERT" if ipmi_fault else "RECOVERY"
+                self.db_service.log_operations_event(severity, event, action_taken, result)
+
+            if self.raid_failure != raid_failure:
+                severity = "CRITICAL" if raid_failure else "INFO"
+                event = "RAID Controller/Battery Failure" if raid_failure else "RAID recovered"
+                action_taken = "Checked storage controller and battery health status"
+                result = "ALERT" if raid_failure else "RECOVERY"
+                self.db_service.log_operations_event(severity, event, action_taken, result)
+        else:
+            self.status_fetched_once = True
+
         self.worker_online = worker
         self.ingest_online = ingest
         self.db_online = db
-        self.ollama_online = ollama_stats["status"] == "ONLINE"
+        self.ollama_online = ollama_online_now
+        self.disk_percent = disk_percent
+        self.fs_readonly = fs_readonly
+        self.ipmi_fault = ipmi_fault
+        self.raid_failure = raid_failure
+
+        # Track if Ollama offline > 5 minutes (300 seconds)
+        if not self.ollama_online:
+            if self.ollama_first_offline is None:
+                self.ollama_first_offline = time.time()
+            time_offline = time.time() - self.ollama_first_offline
+            self.ollama_is_critical = (time_offline > 300)
+        else:
+            self.ollama_first_offline = None
+            self.ollama_is_critical = False
 
         # Update Header
         try:
@@ -796,15 +913,17 @@ class P3NocApp(App):
             risk_history = self.db_service.get_hourly_risk_history()
             latest_articles = self.db_service.get_latest_articles(limit=50)
             latest_analysis = self.db_service.get_latest_analysis()
+            oldest_age = self.db_service.get_oldest_processing_age()
             
             self.app.call_from_thread(
                 self._update_db_metrics_ui,
-                queue_counts, throughput, processed_today, risk_history, latest_articles, latest_analysis
+                queue_counts, throughput, processed_today, risk_history, latest_articles, latest_analysis, oldest_age
             )
         except Exception:
             pass
 
-    def _update_db_metrics_ui(self, queue_counts, throughput, processed_today, risk_history, latest_articles, latest_analysis):
+    def _update_db_metrics_ui(self, queue_counts, throughput, processed_today, risk_history, latest_articles, latest_analysis, oldest_age):
+        self.oldest_processing_age = oldest_age
         # Update System counts
         try:
             system_panel = self.query_one(SystemPanel)
@@ -972,6 +1091,7 @@ class P3NocApp(App):
             self.query_one(TickerWidget).current_theme = new_theme
             self.query_one(AutopilotPanel).current_theme = new_theme
             self.query_one(AiServerStatusPanel).current_theme = new_theme
+            self.query_one(WatchdogPanel).current_theme = new_theme
         except Exception:
             pass
         
@@ -998,7 +1118,10 @@ class P3NocApp(App):
             pass
         try:
             header = self.query_one(HeaderWidget)
-            header.display = not self.logs_fullscreen
+            if self.criticalAlarmActive():
+                header.display = True
+            else:
+                header.display = not self.logs_fullscreen
         except Exception:
             pass
 
@@ -1205,7 +1328,11 @@ class P3NocApp(App):
                 "ram": ram,
                 "queue_remaining": throughput["remaining"],
                 "avg_latency": throughput["avg_time"],
-                "ai_server_status": self.ai_server_status
+                "ai_server_status": self.ai_server_status,
+                "disk_percent": self.disk_percent,
+                "fs_readonly": self.fs_readonly,
+                "ipmi_fault": self.ipmi_fault,
+                "raid_failure": self.raid_failure
             }
             
             # 2. Run autopilot cycle on the AutopilotService
@@ -1316,6 +1443,29 @@ class P3NocApp(App):
         else:
             self.ai_server_is_critical = False
 
+        # AI SERVER CRITICAL Check
+        ping_ok = res.get("ping_ok", True)
+        ssh_ok = res.get("ssh_ok", True)
+        ollama_port_ok = res.get("ollama_port_ok", True)
+        ollama_ok = res.get("ollama_ok", True)
+        
+        # 1. Ping succeeds, SSH succeeds, TCP 11434 fails
+        cond1 = ping_ok and ssh_ok and not ollama_port_ok
+        
+        # 2. /api/tags fails for >60 seconds
+        if not ollama_ok:
+            if self.ai_server_tags_first_fail is None:
+                self.ai_server_tags_first_fail = time.time()
+            cond2 = (time.time() - self.ai_server_tags_first_fail > 60)
+        else:
+            self.ai_server_tags_first_fail = None
+            cond2 = False
+            
+        # 3. Queue item remains processing >15 minutes
+        cond3 = self.oldest_processing_age > 15.0
+        
+        self.ai_server_critical_active = cond1 or cond2 or cond3
+
         # Update Header Widget reactive variables
         try:
             header = self.query_one(HeaderWidget)
@@ -1360,6 +1510,216 @@ class P3NocApp(App):
             alerts.ai_server_flash_toggle = self.ai_server_flash_toggle
         except Exception:
             pass
+
+    def is_in_startup_grace_period(self) -> bool:
+        """Returns True if the application or host has booted in the last 5 minutes."""
+        app_uptime = time.time() - self.app_start_time
+        try:
+            system_uptime = time.time() - psutil.boot_time()
+        except Exception:
+            system_uptime = 9999.0
+        return app_uptime < 300.0 or system_uptime < 300.0
+
+    def hasCriticalFault(self) -> bool:
+        """Returns True if any critical fault (recoverable or non-recoverable) exists."""
+        return (
+            self.hasNonRecoverableFault() or
+            not self.ollama_online or
+            self.ai_server_status == "RED" or
+            not self.ingest_online or
+            self.autopilot_service.locked
+        )
+
+    def hasNonRecoverableFault(self) -> bool:
+        """Returns True if any non-recoverable system fault is present."""
+        # 1. PostgreSQL offline
+        if not self.db_online:
+            return True
+        # 2. Worker offline
+        if not self.worker_online:
+            return True
+        # 3. Disk usage > 95%
+        if self.disk_percent > 95.0:
+            return True
+        # 4. Filesystem mounted read-only
+        if self.fs_readonly:
+            return True
+        # 5. IPMI fault
+        if self.ipmi_fault:
+            return True
+        # 6. RAID controller/battery failure
+        if self.raid_failure:
+            return True
+        # 7. Ollama unavailable for > 5 mins
+        if self.ollama_is_critical:
+            return True
+        # 8. AI server unreachable for > 5 mins or critical active
+        if self.ai_server_is_critical or self.ai_server_critical_active:
+            return True
+        # 9. Autopilot locked with any critical issue
+        if self.autopilot_service.locked:
+            if not self.ollama_online or not self.ingest_online:
+                return True
+        return False
+
+    @property
+    def criticalAlarmActive(self) -> CallableBool:
+        """Returns CallableBool reflecting active non-recoverable alarm, respecting startup grace period."""
+        if self.is_in_startup_grace_period():
+            return CallableBool(False)
+        return CallableBool(self.hasNonRecoverableFault())
+
+    def _check_hardware_health(self) -> dict:
+        """
+        Layered hardware health checking:
+        1. Disk usage via psutil
+        2. Read-only filesystem check
+        3. IPMI System Fault check via ipmitool
+        4. RAID check via MegaCli / storcli / perccli
+        Gracefully degrades if commands are missing.
+        """
+        disk_percent = float(os.getenv("MOCK_DISK_PERCENT", "0.0"))
+        if disk_percent == 0.0:
+            try:
+                disk_percent = psutil.disk_usage('/').percent
+            except Exception:
+                disk_percent = 0.0
+                
+        fs_readonly = os.getenv("MOCK_READ_ONLY_FS", "false").lower() == "true"
+        if not fs_readonly:
+            try:
+                for part in psutil.disk_partitions(all=True):
+                    if part.mountpoint == '/':
+                        if 'ro' in part.opts.split(','):
+                            fs_readonly = True
+                            break
+            except Exception:
+                pass
+                
+        ipmi_fault = os.getenv("MOCK_IPMI_FAULT", "false").lower() == "true"
+        if not ipmi_fault and sys.platform.startswith("linux"):
+            try:
+                res = subprocess.run(["sudo", "ipmitool", "sel", "elist"], capture_output=True, text=True, timeout=2.0)
+                if res.returncode == 0:
+                    for line in res.stdout.splitlines():
+                        line_lower = line.lower()
+                        if "critical" in line_lower or "non-recoverable" in line_lower or "failure" in line_lower:
+                            ipmi_fault = True
+                            break
+                if not ipmi_fault:
+                    res = subprocess.run(["sudo", "ipmitool", "sensor"], capture_output=True, text=True, timeout=2.0)
+                    if res.returncode == 0:
+                        for line in res.stdout.splitlines():
+                            parts = line.split('|')
+                            if len(parts) >= 4:
+                                status_val = parts[3].strip().lower()
+                                if status_val in ("cr", "nr", "critical", "non-recoverable", "fail"):
+                                    ipmi_fault = True
+                                    break
+            except Exception:
+                pass
+                
+        raid_failure = os.getenv("MOCK_RAID_FAILURE", "false").lower() == "true"
+        if not raid_failure and sys.platform.startswith("linux"):
+            for cmd in ["storcli", "perccli", "/opt/MegaRAID/storcli/storcli64", "/opt/MegaRAID/perccli/perccli64"]:
+                try:
+                    res = subprocess.run([cmd, "/c0", "show"], capture_output=True, text=True, timeout=3.0)
+                    if res.returncode == 0:
+                        stdout_lower = res.stdout.lower()
+                        if "degraded" in stdout_lower or "failed" in stdout_lower or "offline" in stdout_lower:
+                            raid_failure = True
+                            break
+                except FileNotFoundError:
+                    continue
+                except Exception:
+                    pass
+            if not raid_failure:
+                for cmd in ["MegaCli", "MegaCli64", "/opt/MegaRAID/MegaCli/MegaCli64"]:
+                    try:
+                        res = subprocess.run([cmd, "-AdpAllInfo", "-aAll"], capture_output=True, text=True, timeout=3.0)
+                        if res.returncode == 0:
+                            stdout_lower = res.stdout.lower()
+                            if "degraded" in stdout_lower or "failed" in stdout_lower or "critical" in stdout_lower:
+                                raid_failure = True
+                                break
+                    except FileNotFoundError:
+                        continue
+                    except Exception:
+                        pass
+                        
+        return {
+            "disk_percent": disk_percent,
+            "fs_readonly": fs_readonly,
+            "ipmi_fault": ipmi_fault,
+            "raid_failure": raid_failure
+        }
+
+    def run_logo_flash_timer(self):
+        """Runs every 250ms to update logo flashing status and System Watchdog values."""
+        t310 = "RED" if (self.disk_percent > 95.0 or self.fs_readonly or self.ipmi_fault or self.raid_failure) else "GREEN"
+        
+        if self.ai_server_status == "RED":
+            r510 = "RED" if self.ai_server_is_critical else "YELLOW"
+        else:
+            r510 = "RED" if self.ai_server_critical_active else "GREEN"
+            
+        if not self.ollama_online:
+            if self.ollama_is_critical:
+                ollama_api = "RED"
+            elif self.ai_server_tags_first_fail is not None and (time.time() - self.ai_server_tags_first_fail > 60.0):
+                ollama_api = "RED"
+            else:
+                ollama_api = "YELLOW"
+        else:
+            ollama_api = "GREEN"
+            
+        worker = "GREEN" if self.worker_online else "RED"
+        postgres = "GREEN" if self.db_online else "RED"
+        queue = "RED" if self.oldest_processing_age > 15.0 else "GREEN"
+
+        try:
+            w = self.query_one(WatchdogPanel)
+            w.t310_status = t310
+            w.r510_status = r510
+            w.ollama_api_status = ollama_api
+            w.worker_status = worker
+            w.postgres_status = postgres
+            w.queue_status = queue
+        except Exception:
+            pass
+
+        alarm_active = self.criticalAlarmActive()
+        if alarm_active:
+            self.logo_flash_phase = (self.logo_flash_phase + 1) % 2
+            try:
+                h = self.query_one(HeaderWidget)
+                h.logo_flash_phase = self.logo_flash_phase
+                h.critical_alarm_active = True
+                h.refresh()
+            except Exception:
+                pass
+            # Force header display if logs fullscreen is active
+            if self.logs_fullscreen:
+                try:
+                    self.query_one(HeaderWidget).display = True
+                except Exception:
+                    pass
+        else:
+            if self.logo_flash_phase != 0 or getattr(self, "_last_alarm_state", False):
+                self.logo_flash_phase = 0
+                try:
+                    h = self.query_one(HeaderWidget)
+                    h.logo_flash_phase = 0
+                    h.critical_alarm_active = False
+                    h.refresh()
+                except Exception:
+                    pass
+                if self.logs_fullscreen:
+                    try:
+                        self.query_one(HeaderWidget).display = False
+                    except Exception:
+                        pass
+        self._last_alarm_state = alarm_active
 
     def generate_weekly_report(self, date_str):
         try:
