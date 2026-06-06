@@ -1,0 +1,19 @@
+[Unit]
+Description=P3 AI Wallboard TTY3 Service
+After=network.target
+
+[Service]
+Type=simple
+User=matt
+ExecStart=/usr/bin/ssh -o ConnectTimeout=5 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no -t matty@192.168.1.47 p3ainoc
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty3
+TTYReset=yes
+TTYVHangup=yes
+Environment=TERM=xterm-256color
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
