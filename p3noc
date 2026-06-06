@@ -1,4 +1,5 @@
 #!/bin/bash
 cd /opt/p3-noc
 source .venv/bin/activate
-exec python dashboard.py
+exec python3 dashboard.py "$@"
+

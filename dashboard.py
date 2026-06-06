@@ -690,10 +690,11 @@ class P3NocApp(App):
         ("q", "quit_app", "Quit"),
     ]
 
-    def __init__(self, wallboard_mode=False, r510_mode=False, **kwargs):
+    def __init__(self, wallboard_mode=False, r510_mode=False, btc_ops_mode=False, **kwargs):
         super().__init__(**kwargs)
         self.wallboard_mode = wallboard_mode
         self.r510_mode = r510_mode or (socket.gethostname() == AI_SERVER_HOST)
+        self.btc_ops_mode = btc_ops_mode
         self.remote_rotator_status = {}
         self.theme_index = 0
         self.logs_fullscreen = False
@@ -877,6 +878,10 @@ class P3NocApp(App):
         self.run_ai_server_update()
         self.run_remote_rotator_update()
         self.check_briefing_refresh_needed()
+
+        if self.btc_ops_mode:
+            from widgets.bitcoin_operations_screen import BitcoinOperationsScreen
+            self.push_screen(BitcoinOperationsScreen(theme_name=THEMES[self.theme_index]))
 
     def activate_startup_safe_mode(self, reason: str):
         """Activates Safe Mode fallback on the dashboard."""
@@ -3012,7 +3017,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="P3 NOC — Bitcoin Intelligence Operations Center")
     parser.add_argument("--wallboard", action="store_true", help="Launch in wallboard mode (auto-focus rotation, double border, no footer)")
     parser.add_argument("--r510", action="store_true", help="Launch AI Server Dashboard (R510) mode with Remote Display Rotation Control")
+    parser.add_argument("--btc-ops", action="store_true", help="Launch directly into Bitcoin Operations Screen")
     args = parser.parse_args()
 
-    app = P3NocApp(wallboard_mode=args.wallboard, r510_mode=args.r510)
+    app = P3NocApp(wallboard_mode=args.wallboard, r510_mode=args.r510, btc_ops_mode=args.btc_ops)
     app.run()
