@@ -1327,6 +1327,65 @@ class P3NocApp(App):
         except Exception:
             pass
 
+    def run_bitcoin_node_update(self):
+        if self.startup_safe_mode_active:
+            return
+        self.run_worker(self._fetch_bitcoin_node_job, thread=True)
+
+    def _fetch_bitcoin_node_job(self):
+        import requests
+        from config.settings import BTC_MONITOR_URL
+        try:
+            res = requests.get(f"{BTC_MONITOR_URL}/api/infrastructure/bitcoin", timeout=1.5)
+            if res.status_code == 200:
+                data = res.json()
+                self.app.call_from_thread(self._update_bitcoin_node_ui, data)
+            else:
+                self.app.call_from_thread(self._update_bitcoin_node_ui, {"status": "offline"})
+        except Exception:
+            self.app.call_from_thread(self._update_bitcoin_node_ui, {"status": "offline"})
+
+    def _update_bitcoin_node_ui(self, res):
+        self.btc_node_status = res.get("status", "offline")
+        self.btc_node_peers = res.get("peerCount", 0)
+        self.btc_node_blocks = res.get("blocks", 0)
+        self.btc_node_headers = res.get("headers", 0)
+        self.btc_node_progress = res.get("verificationProgress", 0.0)
+        self.btc_node_disk_used = res.get("diskUsedGB", 0.0)
+        self.btc_node_disk_total = res.get("diskTotalGB", 11000.0)
+        self.btc_node_version = res.get("nodeVersion", "Unknown")
+
+        # Update panel
+        try:
+            panel = self.query_one(BitcoinNodePanel)
+            panel.node_status = self.btc_node_status
+            panel.peer_count = self.btc_node_peers
+            panel.blocks = self.btc_node_blocks
+            panel.headers = self.btc_node_headers
+            panel.verification_progress = self.btc_node_progress
+            panel.disk_used = self.btc_node_disk_used
+            panel.disk_total = self.btc_node_disk_total
+            panel.node_version = self.btc_node_version
+        except Exception:
+            pass
+
+        # Update Watchdog Panel reactive variable
+        try:
+            watchdog = self.query_one(WatchdogPanel)
+            watchdog.btc_node_status = self.btc_node_status
+        except Exception:
+            pass
+
+        # Update Alert Panel reactive variables
+        try:
+            alerts = self.query_one(AlertPanel)
+            alerts.btc_node_status = self.btc_node_status
+            alerts.btc_node_peers = self.btc_node_peers
+            alerts.btc_node_disk_used = self.btc_node_disk_used
+            alerts.btc_node_disk_total = self.btc_node_disk_total
+        except Exception:
+            pass
+
     # --- Actions / Keyboard Bindings handlers ---
 
     def action_focus_logs(self):
@@ -2943,65 +3002,6 @@ class WeeklyReportDialog(ModalScreen):
     def on_key(self, event) -> None:
         if event.key in ("escape", "enter", "space"):
             self.dismiss()
-
-    def run_bitcoin_node_update(self):
-        if self.startup_safe_mode_active:
-            return
-        self.run_worker(self._fetch_bitcoin_node_job, thread=True)
-
-    def _fetch_bitcoin_node_job(self):
-        import requests
-        from config.settings import BTC_MONITOR_URL
-        try:
-            res = requests.get(f"{BTC_MONITOR_URL}/api/infrastructure/bitcoin", timeout=1.5)
-            if res.status_code == 200:
-                data = res.json()
-                self.app.call_from_thread(self._update_bitcoin_node_ui, data)
-            else:
-                self.app.call_from_thread(self._update_bitcoin_node_ui, {"status": "offline"})
-        except Exception:
-            self.app.call_from_thread(self._update_bitcoin_node_ui, {"status": "offline"})
-
-    def _update_bitcoin_node_ui(self, res):
-        self.btc_node_status = res.get("status", "offline")
-        self.btc_node_peers = res.get("peerCount", 0)
-        self.btc_node_blocks = res.get("blocks", 0)
-        self.btc_node_headers = res.get("headers", 0)
-        self.btc_node_progress = res.get("verificationProgress", 0.0)
-        self.btc_node_disk_used = res.get("diskUsedGB", 0.0)
-        self.btc_node_disk_total = res.get("diskTotalGB", 11000.0)
-        self.btc_node_version = res.get("nodeVersion", "Unknown")
-
-        # Update panel
-        try:
-            panel = self.query_one(BitcoinNodePanel)
-            panel.node_status = self.btc_node_status
-            panel.peer_count = self.btc_node_peers
-            panel.blocks = self.btc_node_blocks
-            panel.headers = self.btc_node_headers
-            panel.verification_progress = self.btc_node_progress
-            panel.disk_used = self.btc_node_disk_used
-            panel.disk_total = self.btc_node_disk_total
-            panel.node_version = self.btc_node_version
-        except Exception:
-            pass
-
-        # Update Watchdog Panel reactive variable
-        try:
-            watchdog = self.query_one(WatchdogPanel)
-            watchdog.btc_node_status = self.btc_node_status
-        except Exception:
-            pass
-
-        # Update Alert Panel reactive variables
-        try:
-            alerts = self.query_one(AlertPanel)
-            alerts.btc_node_status = self.btc_node_status
-            alerts.btc_node_peers = self.btc_node_peers
-            alerts.btc_node_disk_used = self.btc_node_disk_used
-            alerts.btc_node_disk_total = self.btc_node_disk_total
-        except Exception:
-            pass
 
 # --- Entry Point ---
 if __name__ == "__main__":
