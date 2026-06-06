@@ -45,6 +45,8 @@ from widgets.ai_server_status_panel import AiServerStatusPanel
 from widgets.watchdog_panel import WatchdogPanel
 from widgets.display_rotation_control import DisplayRotationControl
 from widgets.ai_market_briefing import AiMarketBriefingWidget
+from widgets.bitcoin_node_panel import BitcoinNodePanel
+
 
 import logging
 logger = logging.getLogger("dashboard")
@@ -382,14 +384,14 @@ class P3NocApp(App):
         layout: grid;
         grid-size: 3;
         grid-columns: 1fr 1.5fr 1fr;
-        height: 28;
+        height: 34;
         margin: 0 1 1 1;
     }
 
     #left-col {
         layout: grid;
-        grid-size: 1 3;
-        grid-rows: 1fr 1fr 1fr;
+        grid-size: 1 4;
+        grid-rows: 1fr 1fr 1fr 1fr;
         grid-gutter: 1;
     }
 
@@ -620,6 +622,39 @@ class P3NocApp(App):
         border: double #333333;
     }
 
+    /* BitcoinNodePanel theme styles */
+    .matrix-green BitcoinNodePanel { border: round #008800; background: #041404; color: #00ff00; }
+    .matrix-green BitcoinNodePanel:focus { border: double #00ff00; }
+    .matrix-green.wallboard-mode BitcoinNodePanel { border: double #008800; }
+
+    .amber-crt BitcoinNodePanel { border: round #aa7000; background: #140d00; color: #ffb000; }
+    .amber-crt BitcoinNodePanel:focus { border: double #ffb000; }
+    .amber-crt.wallboard-mode BitcoinNodePanel { border: double #aa7000; }
+
+    .cyber-blue BitcoinNodePanel { border: round #006699; background: #001222; color: #00f0ff; }
+    .cyber-blue BitcoinNodePanel:focus { border: double #00f0ff; }
+    .cyber-blue.wallboard-mode BitcoinNodePanel { border: double #006699; }
+
+    .red-alert BitcoinNodePanel { border: round #880000; background: #220000; color: #ff3333; }
+    .red-alert BitcoinNodePanel:focus { border: double #ff3333; }
+    .red-alert.wallboard-mode BitcoinNodePanel { border: double #880000; }
+
+    .matrix BitcoinNodePanel { border: round #00ff00; background: #000000; color: #00ff00; }
+    .matrix BitcoinNodePanel:focus { border: double #00ff00; }
+    .matrix.wallboard-mode BitcoinNodePanel { border: double #00ff00; }
+
+    .bloomberg BitcoinNodePanel { border: round #0044bb; background: #000022; color: #ff8800; }
+    .bloomberg BitcoinNodePanel:focus { border: double #ff8800; }
+    .bloomberg.wallboard-mode BitcoinNodePanel { border: double #0044bb; }
+
+    .trading-desk BitcoinNodePanel { border: round #444444; background: #222222; color: #00ffff; }
+    .trading-desk BitcoinNodePanel:focus { border: double #00ffff; }
+    .trading-desk.wallboard-mode BitcoinNodePanel { border: double #444444; }
+
+    .midnight BitcoinNodePanel { border: round #333333; background: #000000; color: #ffffff; }
+    .midnight BitcoinNodePanel:focus { border: double #ffffff; }
+    .midnight.wallboard-mode BitcoinNodePanel { border: double #333333; }
+
     /* Yellow paused panel rules */
     DisplayRotationControl.paused-panel {
         border: round #ffff00 !important;
@@ -720,6 +755,16 @@ class P3NocApp(App):
         self.startup_safe_mode_active = False
         self._last_critical_alarm_state = None
 
+        # Bitcoin Core Node status states
+        self.btc_node_status = "OFFLINE"
+        self.btc_node_peers = 0
+        self.btc_node_blocks = 0
+        self.btc_node_headers = 0
+        self.btc_node_progress = 0.0
+        self.btc_node_disk_used = 0.0
+        self.btc_node_disk_total = 11000.0
+        self.btc_node_version = "Unknown"
+
         # Register cleanup on exit
         atexit.register(self._cleanup_alarm_file)
 
@@ -751,6 +796,7 @@ class P3NocApp(App):
                 yield self.safe_instantiate(SystemPanel)
                 yield self.safe_instantiate(ThroughputPanel)
                 yield self.safe_instantiate(SysMetricsPanel)
+                yield self.safe_instantiate(BitcoinNodePanel)
             
             with Container(id="middle-col"):
                 yield self.safe_instantiate(RiskRadar)
@@ -811,6 +857,7 @@ class P3NocApp(App):
 
         # 3. Register background timers
         self.set_interval(REFRESH_RATES["status"], self.run_status_and_logs_update)
+        self.set_interval(REFRESH_RATES["status"], self.run_bitcoin_node_update)
         self.set_interval(REFRESH_RATES["db"], self.run_db_metrics_update)
         self.set_interval(REFRESH_RATES["ticker_fetch"], self.run_btc_ticker_update)
         self.set_interval(60.0, self.run_autopilot_cycle)
@@ -822,6 +869,7 @@ class P3NocApp(App):
 
         # 4. Trigger initial fetches
         self.run_status_and_logs_update()
+        self.run_bitcoin_node_update()
         self.run_db_metrics_update()
         self.run_btc_ticker_update()
         self.run_autopilot_cycle()
@@ -1324,6 +1372,7 @@ class P3NocApp(App):
             if not self.r510_mode:
                 self.query_one(AiServerStatusPanel).current_theme = new_theme
             self.query_one(WatchdogPanel).current_theme = new_theme
+            self.query_one(BitcoinNodePanel).current_theme = new_theme
         except Exception:
             pass
         
@@ -1565,7 +1614,11 @@ class P3NocApp(App):
                 "disk_percent": self.disk_percent,
                 "fs_readonly": self.fs_readonly,
                 "ipmi_fault": self.ipmi_fault,
-                "raid_failure": self.raid_failure
+                "raid_failure": self.raid_failure,
+                "btc_status": self.btc_node_status,
+                "btc_peers": self.btc_node_peers,
+                "btc_disk_used": self.btc_node_disk_used,
+                "btc_disk_total": self.btc_node_disk_total
             }
             
             # 2. Run autopilot cycle on the AutopilotService
@@ -2558,6 +2611,7 @@ class P3NocApp(App):
             w.disk_health = disk_health
             w.memory_health = memory_health
             w.filesystem_state = fs_state
+            w.btc_node_status = self.btc_node_status
         except Exception:
             pass
 
@@ -2890,8 +2944,68 @@ class WeeklyReportDialog(ModalScreen):
         if event.key in ("escape", "enter", "space"):
             self.dismiss()
 
+    def run_bitcoin_node_update(self):
+        if self.startup_safe_mode_active:
+            return
+        self.run_worker(self._fetch_bitcoin_node_job, thread=True)
+
+    def _fetch_bitcoin_node_job(self):
+        import requests
+        from config.settings import BTC_MONITOR_URL
+        try:
+            res = requests.get(f"{BTC_MONITOR_URL}/api/infrastructure/bitcoin", timeout=1.5)
+            if res.status_code == 200:
+                data = res.json()
+                self.app.call_from_thread(self._update_bitcoin_node_ui, data)
+            else:
+                self.app.call_from_thread(self._update_bitcoin_node_ui, {"status": "offline"})
+        except Exception:
+            self.app.call_from_thread(self._update_bitcoin_node_ui, {"status": "offline"})
+
+    def _update_bitcoin_node_ui(self, res):
+        self.btc_node_status = res.get("status", "offline")
+        self.btc_node_peers = res.get("peerCount", 0)
+        self.btc_node_blocks = res.get("blocks", 0)
+        self.btc_node_headers = res.get("headers", 0)
+        self.btc_node_progress = res.get("verificationProgress", 0.0)
+        self.btc_node_disk_used = res.get("diskUsedGB", 0.0)
+        self.btc_node_disk_total = res.get("diskTotalGB", 11000.0)
+        self.btc_node_version = res.get("nodeVersion", "Unknown")
+
+        # Update panel
+        try:
+            panel = self.query_one(BitcoinNodePanel)
+            panel.node_status = self.btc_node_status
+            panel.peer_count = self.btc_node_peers
+            panel.blocks = self.btc_node_blocks
+            panel.headers = self.btc_node_headers
+            panel.verification_progress = self.btc_node_progress
+            panel.disk_used = self.btc_node_disk_used
+            panel.disk_total = self.btc_node_disk_total
+            panel.node_version = self.btc_node_version
+        except Exception:
+            pass
+
+        # Update Watchdog Panel reactive variable
+        try:
+            watchdog = self.query_one(WatchdogPanel)
+            watchdog.btc_node_status = self.btc_node_status
+        except Exception:
+            pass
+
+        # Update Alert Panel reactive variables
+        try:
+            alerts = self.query_one(AlertPanel)
+            alerts.btc_node_status = self.btc_node_status
+            alerts.btc_node_peers = self.btc_node_peers
+            alerts.btc_node_disk_used = self.btc_node_disk_used
+            alerts.btc_node_disk_total = self.btc_node_disk_total
+        except Exception:
+            pass
+
 # --- Entry Point ---
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(description="P3 NOC — Bitcoin Intelligence Operations Center")
     parser.add_argument("--wallboard", action="store_true", help="Launch in wallboard mode (auto-focus rotation, double border, no footer)")
     parser.add_argument("--r510", action="store_true", help="Launch AI Server Dashboard (R510) mode with Remote Display Rotation Control")

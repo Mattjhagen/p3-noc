@@ -45,3 +45,8 @@ REFRESH_RATES = {
     "ticker_update": float(os.getenv("REFRESH_TICKER", "0.1")), # Ticker redraw frequency
     "ticker_fetch": int(os.getenv("FETCH_TICKER", "60")), # How often to fetch BTC price
 }
+
+# Bitcoin Monitor Service configurations
+BTC_MONITOR_URL = os.getenv("BTC_MONITOR_URL", "http://localhost:8000")
+BTC_CLI_PATH = os.getenv("BTC_CLI_PATH", "bitcoin-cli")
+

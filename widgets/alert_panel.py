@@ -37,6 +37,12 @@ class AlertPanel(Static):
     ai_server_status = reactive("GREEN")
     ai_server_is_critical = reactive(False)
     ai_server_flash_toggle = reactive(False)
+
+    # Bitcoin Core Node reactive states
+    btc_node_status = reactive("OFFLINE")
+    btc_node_peers = reactive(0)
+    btc_node_disk_used = reactive(0.0)
+    btc_node_disk_total = reactive(11000.0)
     
     current_theme = reactive("matrix-green")
 
@@ -94,6 +100,23 @@ class AlertPanel(Static):
         if self.predictive_alerts:
             for pred in self.predictive_alerts:
                 active_alerts.append((f"Predictive: {pred}", "WARNING"))
+
+        # Bitcoin Node alerts
+        btc_status_upper = self.btc_node_status.upper().strip()
+        if btc_status_upper == "OFFLINE":
+            active_alerts.append(("Bitcoin Node Offline", "CRITICAL"))
+        elif btc_status_upper == "RPC_UNREACHABLE":
+            active_alerts.append(("Bitcoin RPC Unreachable", "CRITICAL"))
+        elif btc_status_upper == "SYNC_STALLED":
+            active_alerts.append(("Bitcoin Sync Stalled", "WARNING"))
+        
+        if self.btc_node_peers < 3 and btc_status_upper != "OFFLINE":
+            active_alerts.append((f"Bitcoin Peers Low ({self.btc_node_peers})", "WARNING"))
+
+        if self.btc_node_disk_total > 0:
+            util = (self.btc_node_disk_used / self.btc_node_disk_total) * 100.0
+            if util > 90.0:
+                active_alerts.append((f"Bitcoin Disk >90% ({util:.1f}%)", "CRITICAL"))
 
         content = Text()
         import time

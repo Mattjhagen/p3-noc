@@ -11,6 +11,7 @@ class DBService:
         self.db_url = DATABASE_URL
         self.init_operations_log_table()
         self.init_briefing_cache_table()
+        self.init_bitcoin_history_table()
 
     def init_operations_log_table(self):
         """Create operations_log table if it does not exist."""
@@ -544,6 +545,82 @@ class DBService:
                 return row[0] if row else None
         except Exception:
             return None
+        finally:
+            if conn:
+                conn.close()
+
+    def init_bitcoin_history_table(self):
+        """Create bitcoin_history table if it does not exist."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS bitcoin_history (
+                        id SERIAL PRIMARY KEY,
+                        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        blocks INTEGER NOT NULL,
+                        headers INTEGER NOT NULL,
+                        peer_count INTEGER NOT NULL,
+                        verification_progress NUMERIC(5, 2) NOT NULL,
+                        mempool_size INTEGER NOT NULL,
+                        disk_usage NUMERIC(10, 2) NOT NULL,
+                        difficulty NUMERIC(30, 4) NOT NULL,
+                        blockchain_size NUMERIC(10, 2) NOT NULL
+                    );
+                """)
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to initialize bitcoin_history table: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    def save_bitcoin_snapshot(self, blocks: int, headers: int, peer_count: int,
+                              verification_progress: float, mempool_size: int,
+                              disk_usage: float, difficulty: float, blockchain_size: float) -> bool:
+        """Persist a new Bitcoin Core node state snapshot."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO bitcoin_history (
+                        blocks, headers, peer_count, verification_progress,
+                        mempool_size, disk_usage, difficulty, blockchain_size
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                """, (blocks, headers, peer_count, verification_progress,
+                      mempool_size, disk_usage, difficulty, blockchain_size))
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save bitcoin snapshot: {e}")
+            if conn:
+                conn.rollback()
+            return False
+        finally:
+            if conn:
+                conn.close()
+
+    def get_bitcoin_history(self, limit=288) -> list:
+        """Retrieve historical bitcoin node snapshots, ordered by timestamp ascending."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT timestamp, blocks, headers, peer_count, verification_progress,
+                           mempool_size, disk_usage, difficulty, blockchain_size
+                    FROM bitcoin_history
+                    ORDER BY timestamp DESC
+                    LIMIT %s;
+                """, (limit,))
+                # Order ascending for time series graphing
+                rows = cur.fetchall()
+                return list(reversed(rows))
+        except Exception as e:
+            logger.error(f"Failed to fetch bitcoin history: {e}")
+            return []
         finally:
             if conn:
                 conn.close()

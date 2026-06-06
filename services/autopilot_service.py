@@ -183,6 +183,12 @@ class AutopilotService:
         fs_readonly = telemetry.get("fs_readonly", False)
         ipmi_fault = telemetry.get("ipmi_fault", False)
         raid_failure = telemetry.get("raid_failure", False)
+
+        # Bitcoin Node checks
+        btc_status = telemetry.get("btc_status", "OFFLINE").upper().strip()
+        btc_peers = telemetry.get("btc_peers", 0)
+        btc_disk_used = telemetry.get("btc_disk_used", 0.0)
+        btc_disk_total = telemetry.get("btc_disk_total", 11000.0)
         
         if not db_ok:
             score -= 30
@@ -205,6 +211,27 @@ class AutopilotService:
         if processing_count > 5 and oldest_age > 15:
             score -= 10
             issues.append(f"Queue Jam: processing job age > {oldest_age}m")
+
+        # Bitcoin Node deductions
+        if btc_status == "OFFLINE":
+            score -= 20
+            issues.append("Bitcoin Core Node Offline")
+        elif btc_status == "RPC_UNREACHABLE":
+            score -= 15
+            issues.append("Bitcoin Core Node: RPC Unreachable")
+        elif btc_status == "SYNC_STALLED":
+            score -= 10
+            issues.append("Bitcoin Core Node: Sync Stalled")
+
+        if btc_peers < 3 and btc_status != "OFFLINE":
+            score -= 5
+            issues.append(f"Bitcoin Core Node: Low Peers ({btc_peers})")
+
+        if btc_disk_total > 0:
+            btc_disk_pct = (btc_disk_used / btc_disk_total) * 100.0
+            if btc_disk_pct > 90.0:
+                score -= 15
+                issues.append(f"Bitcoin Core Node: Storage > 90% ({btc_disk_pct:.1f}%)")
             
         # Hardware fault deductions
         if disk_percent > 95.0:
@@ -219,6 +246,7 @@ class AutopilotService:
         if raid_failure:
             score -= 30
             issues.append("RAID Controller/Battery Failure")
+
 
         # --- Self-Healing Rules Engine ---
         # Rule 1: Ollama Offline / Timeout Spike
