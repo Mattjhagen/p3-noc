@@ -28,6 +28,7 @@ except Exception as e:
 # Constants
 LOCK_TTY1_FILE = "/tmp/p3-lock-tty1"
 LOCK_TTY2_FILE = "/tmp/p3-lock-tty2"
+LOCK_TTY3_FILE = "/tmp/p3-lock-tty3"
 CRITICAL_ALARM_FILE = "/tmp/p3-critical-alarm"
 STATUS_JSON_FILE = "/tmp/p3-tty-status.json"
 ACTIVITY_FILE = "/tmp/p3-tty-activity"
@@ -215,6 +216,7 @@ def main():
             # Check override files
             lock_tty1 = os.path.exists(LOCK_TTY1_FILE)
             lock_tty2 = os.path.exists(LOCK_TTY2_FILE)
+            lock_tty3 = os.path.exists(LOCK_TTY3_FILE)
             critical_active = os.path.exists(CRITICAL_ALARM_FILE)
 
             # Get actual active TTY
@@ -253,12 +255,16 @@ def main():
                 current_locked = 'tty1'
             elif lock_tty2:
                 current_locked = 'tty2'
+            elif lock_tty3:
+                current_locked = 'tty3'
 
             if last_locked_state is not None and last_locked_state != current_locked:
                 if current_locked == 'tty1':
                     run_db_log("INFO", "Operator override active: Display locked to TTY1", "touch /tmp/p3-lock-tty1", "LOCKED_TTY1")
                 elif current_locked == 'tty2':
                     run_db_log("INFO", "Operator override active: Display locked to TTY2", "touch /tmp/p3-lock-tty2", "LOCKED_TTY2")
+                elif current_locked == 'tty3':
+                    run_db_log("INFO", "Operator override active: Display locked to TTY3", "touch /tmp/p3-lock-tty3", "LOCKED_TTY3")
                 else:
                     run_db_log("INFO", "Operator overrides cleared. Resuming automatic rotation.", "rm /tmp/p3-lock-tty*", "ROTATION_RESUMED")
             last_locked_state = current_locked
@@ -304,7 +310,7 @@ def main():
                     in_manual_override = False
                     status = "ACTIVE"
                     pause_reason = "None"
-                    if active_tty in (1, 2):
+                    if active_tty in (1, 2, 3):
                         current_target = active_tty
                     else:
                         current_target = 1
@@ -326,12 +332,18 @@ def main():
                 switch_to_tty(2)
                 current_target = 2
                 seconds_elapsed = 0
+            elif lock_tty3:
+                status = "PAUSED"
+                pause_reason = "None"
+                switch_to_tty(3)
+                current_target = 3
+                seconds_elapsed = 0
             else:
                 # Normal automatic rotation
                 status = "ACTIVE"
                 pause_reason = "None"
                 
-                if active_tty not in (1, 2):
+                if active_tty not in (1, 2, 3):
                     # Pause but no alarm or manual override timer
                     write_status(
                         status="PAUSED",
@@ -347,7 +359,12 @@ def main():
                     continue
 
                 if seconds_elapsed >= interval:
-                    next_target = 2 if current_target == 1 else 1
+                    ROTATION_TARGETS = [1, 2, 3]
+                    try:
+                        idx = ROTATION_TARGETS.index(current_target)
+                    except ValueError:
+                        idx = 0
+                    next_target = ROTATION_TARGETS[(idx + 1) % len(ROTATION_TARGETS)]
                     if switch_to_tty(next_target):
                         current_target = next_target
                         last_switch_time = time.strftime("%H:%M:%S")
