@@ -53,7 +53,10 @@ metrics_cache = {
     "blockchainSizeGB": 0.0,
     "nodeVersion": "Unknown",
     "uptime": 0,
-    "lastUpdated": datetime.now(timezone.utc).isoformat()
+    "lastUpdated": datetime.now(timezone.utc).isoformat(),
+    "blocksPerHour": 0.0,
+    "eta": "0m",
+    "aiRiskSignal": 0.0
 }
 
 peer_cache = []
@@ -145,6 +148,83 @@ def run_remote_ssh_command(btc_cmd, timeout=3.5):
     except Exception as e:
         logger.debug(f"SSH subprocess error for {' '.join(ssh_args)}: {e}")
         return None
+
+
+def compute_sync_metrics_and_risk(current_blocks, headers, peer_count, mempool_size, is_offline):
+    # 1. Blocks per hour and ETA
+    blocks_per_hour = 0.0
+    eta_str = "0m"
+    
+    if current_blocks < headers and headers > 0:
+        remaining_blocks = headers - current_blocks
+        sync_rate_per_second = 0.0
+        try:
+            # Get historical snapshots (up to last 20 snapshots, which cover ~100 minutes)
+            history = db_service.get_bitcoin_history(limit=20)
+            if len(history) >= 2:
+                # Find the oldest snapshot that is at least 10 minutes old
+                now_time = datetime.now(timezone.utc)
+                for snap in history:
+                    snap_time = snap["timestamp"]
+                    if isinstance(snap_time, str):
+                        # Parse ISO format timestamp
+                        snap_time = datetime.fromisoformat(snap_time.replace("Z", "+00:00"))
+                    
+                    time_diff = (now_time - snap_time).total_seconds()
+                    if 600 <= time_diff <= 7200:
+                        blocks_diff = current_blocks - snap["blocks"]
+                        if blocks_diff > 0:
+                            sync_rate_per_second = blocks_diff / time_diff
+                            break
+        except Exception as e:
+            logger.error(f"Error calculating sync rate from DB: {e}")
+
+        # Fallback sync rate: in simulator mode we sync 12 blocks per poll (30s) = 0.4 blocks/sec
+        if sync_rate_per_second <= 0:
+            sync_rate_per_second = 0.4
+            
+        blocks_per_hour = sync_rate_per_second * 3600
+        eta_seconds = remaining_blocks / sync_rate_per_second
+        
+        days = int(eta_seconds // 86400)
+        hours = int((eta_seconds % 86400) // 3600)
+        minutes = int((eta_seconds % 3600) // 60)
+        
+        if days > 0:
+            eta_str = f"{days}d {hours}h"
+        elif hours > 0:
+            eta_str = f"{hours}h {minutes}m"
+        else:
+            eta_str = f"{minutes}m"
+    
+    # 2. AI Risk Signal (0 to 100)
+    base_risk = 30.0
+    try:
+        conn = db_service.get_connection()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT AVG(importance_score) 
+                FROM analyses 
+                WHERE created_at >= NOW() - INTERVAL '4 hours';
+            """)
+            val = cur.fetchone()[0]
+            if val is not None:
+                base_risk = float(val)
+        conn.close()
+    except Exception:
+        pass
+
+    peer_penalty = 0.0
+    if peer_count < 8:
+        peer_penalty = max(0.0, (8.0 - peer_count) * 6.25) # Up to 50 points
+        
+    mempool_penalty = min(20.0, (mempool_size / 20000.0) * 5.0) # Up to 20 points
+    
+    offline_penalty = 80.0 if is_offline else 0.0
+    
+    ai_risk = min(100.0, max(0.0, base_risk + peer_penalty + mempool_penalty + offline_penalty))
+    
+    return round(blocks_per_hour, 2), eta_str, round(ai_risk, 2)
 
 
 def poll_bitcoin_node():
@@ -256,16 +336,17 @@ def poll_bitcoin_node():
             sim_state["mempool_size"] += int(time.time() * 1000 % 19) - 9
             sim_state["mempool_size"] = max(1000, min(120000, sim_state["mempool_size"]))
             
-            if sim_state["progress"] < 100.0:
-                sim_state["progress"] += 0.01
-                sim_state["blocks"] += 1
-                sim_state["disk_used"] += 0.005  # growth
+            if sim_state["blocks"] < sim_state["headers"]:
+                sim_state["blocks"] += 12
+                if sim_state["blocks"] > sim_state["headers"]:
+                    sim_state["blocks"] = sim_state["headers"]
+                sim_state["progress"] = round((sim_state["blocks"] / sim_state["headers"]) * 100.0, 2)
+                sim_state["disk_used"] += 0.05  # growth
                 status = "syncing"
             else:
+                sim_state["blocks"] = sim_state["headers"]
                 sim_state["progress"] = 100.0
                 status = "synced"
-                
-            sim_state["progress"] = round(sim_state["progress"], 2)
             
             import random
             random.seed(int(time.time()))
@@ -317,6 +398,20 @@ def poll_bitcoin_node():
                 }
             }
 
+        # Compute and add sync metrics and AI risk signals
+        bph, eta, risk = compute_sync_metrics_and_risk(
+            metrics_cache["blocks"],
+            metrics_cache["headers"],
+            metrics_cache["peerCount"],
+            metrics_cache["mempoolSize"],
+            metrics_cache["status"] == "offline"
+        )
+        metrics_cache.update({
+            "blocksPerHour": bph,
+            "eta": eta,
+            "aiRiskSignal": risk
+        })
+
 
 # Background looping threads
 def poll_loop():
@@ -363,6 +458,8 @@ def db_snapshot_loop():
                 diff = metrics_cache["difficulty"]
                 bc_size = metrics_cache["blockchainSizeGB"]
                 status = metrics_cache["status"]
+                blocks_per_hour = metrics_cache.get("blocksPerHour", 0.0)
+                ai_risk_signal = metrics_cache.get("aiRiskSignal", 0.0)
 
             if status != "offline":
                 logger.info("Saving Bitcoin historical snapshot to PostgreSQL...")
@@ -374,7 +471,9 @@ def db_snapshot_loop():
                     mempool_size=mempool,
                     disk_usage=disk,
                     difficulty=diff,
-                    blockchain_size=bc_size
+                    blockchain_size=bc_size,
+                    blocks_per_hour=blocks_per_hour,
+                    ai_risk_signal=ai_risk_signal
                 )
                 if success:
                     logger.info("Successfully recorded historical snapshot.")
@@ -424,7 +523,9 @@ def get_bitcoin_history(limit: int = 288):
                 "mempool_size": sim_mem,
                 "disk_usage": round(sim_disk, 2),
                 "difficulty": 126012345678900.0,
-                "blockchain_size": round(sim_bc, 2)
+                "blockchain_size": round(sim_bc, 2),
+                "blocks_per_hour": 12.0 if i < 20 else 0.0,
+                "ai_risk_signal": round(30.0 + (i * 1.5) % 15, 2)
             })
         return mock_history
     return history

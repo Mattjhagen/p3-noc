@@ -569,6 +569,13 @@ class DBService:
                         blockchain_size NUMERIC(10, 2) NOT NULL
                     );
                 """)
+                # Migrations: Add new columns if they do not exist
+                cur.execute("""
+                    ALTER TABLE bitcoin_history ADD COLUMN IF NOT EXISTS blocks_per_hour NUMERIC(10, 2) DEFAULT 0.0;
+                """)
+                cur.execute("""
+                    ALTER TABLE bitcoin_history ADD COLUMN IF NOT EXISTS ai_risk_signal NUMERIC(5, 2) DEFAULT 0.0;
+                """)
                 conn.commit()
         except Exception as e:
             logger.error(f"Failed to initialize bitcoin_history table: {e}")
@@ -578,7 +585,8 @@ class DBService:
 
     def save_bitcoin_snapshot(self, blocks: int, headers: int, peer_count: int,
                               verification_progress: float, mempool_size: int,
-                              disk_usage: float, difficulty: float, blockchain_size: float) -> bool:
+                              disk_usage: float, difficulty: float, blockchain_size: float,
+                              blocks_per_hour: float = 0.0, ai_risk_signal: float = 0.0) -> bool:
         """Persist a new Bitcoin Core node state snapshot."""
         conn = None
         try:
@@ -587,10 +595,12 @@ class DBService:
                 cur.execute("""
                     INSERT INTO bitcoin_history (
                         blocks, headers, peer_count, verification_progress,
-                        mempool_size, disk_usage, difficulty, blockchain_size
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                        mempool_size, disk_usage, difficulty, blockchain_size,
+                        blocks_per_hour, ai_risk_signal
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                 """, (blocks, headers, peer_count, verification_progress,
-                      mempool_size, disk_usage, difficulty, blockchain_size))
+                      mempool_size, disk_usage, difficulty, blockchain_size,
+                      blocks_per_hour, ai_risk_signal))
                 conn.commit()
             return True
         except Exception as e:
@@ -610,7 +620,8 @@ class DBService:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT timestamp, blocks, headers, peer_count, verification_progress,
-                           mempool_size, disk_usage, difficulty, blockchain_size
+                           mempool_size, disk_usage, difficulty, blockchain_size,
+                           blocks_per_hour, ai_risk_signal
                     FROM bitcoin_history
                     ORDER BY timestamp DESC
                     LIMIT %s;

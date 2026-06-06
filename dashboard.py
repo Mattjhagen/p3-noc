@@ -764,6 +764,7 @@ class P3NocApp(App):
         self.btc_node_disk_used = 0.0
         self.btc_node_disk_total = 11000.0
         self.btc_node_version = "Unknown"
+        self.btc_node_eta = "0m"
 
         # Register cleanup on exit
         atexit.register(self._cleanup_alarm_file)
@@ -1354,6 +1355,7 @@ class P3NocApp(App):
         self.btc_node_disk_used = res.get("diskUsedGB", 0.0)
         self.btc_node_disk_total = res.get("diskTotalGB", 11000.0)
         self.btc_node_version = res.get("nodeVersion", "Unknown")
+        self.btc_node_eta = res.get("eta", "0m")
 
         # Update panel
         try:
@@ -1366,6 +1368,7 @@ class P3NocApp(App):
             panel.disk_used = self.btc_node_disk_used
             panel.disk_total = self.btc_node_disk_total
             panel.node_version = self.btc_node_version
+            panel.eta = self.btc_node_eta
         except Exception:
             pass
 

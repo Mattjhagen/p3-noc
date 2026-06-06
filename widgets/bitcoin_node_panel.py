@@ -18,6 +18,7 @@ class BitcoinNodePanel(Static):
     disk_used = reactive(0.0)
     disk_total = reactive(11000.0)
     node_version = reactive("Unknown")
+    eta = reactive("0m")
     
     current_theme = reactive("matrix-green")
 
@@ -80,7 +81,7 @@ class BitcoinNodePanel(Static):
             if status_disp == "Syncing":
                 bar = self._make_progress_bar(self.verification_progress, width=14)
                 content.append(" Sync:    ", style="white")
-                content.append(f"[{bar}] {self.verification_progress:>.2f}%\n", style=warning)
+                content.append(f"[{bar}] {self.verification_progress:>.2f}% (ETA: {self.eta})\n", style=warning)
             else:
                 content.append(" Progress:", style="white")
                 content.append(f" 100% (Ver: {self.node_version})\n", style=healthy)
