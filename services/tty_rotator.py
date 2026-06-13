@@ -74,18 +74,18 @@ def wait_for_gettys():
         logger.info("Non-Linux platform detected. Skipping getty activation check.")
         return
 
-    logger.info("Waiting for getty@tty1.service and getty@tty2.service to be active...")
+    logger.info("Waiting for getty@tty1.service/p3-dashboard.service and getty@tty2.service to be active...")
     first_log = True
     while True:
-        tty1_ok = is_service_active("getty@tty1.service")
+        tty1_ok = is_service_active("getty@tty1.service") or is_service_active("p3-dashboard.service")
         tty2_ok = is_service_active("getty@tty2.service")
         
         if tty1_ok and tty2_ok:
-            logger.info("Both getty@tty1 and getty@tty2 services are active.")
+            logger.info("Both getty@tty1/p3-dashboard and getty@tty2 services are active.")
             break
             
         if first_log:
-            logger.info(f"Waiting... getty@tty1 active: {tty1_ok}, getty@tty2 active: {tty2_ok}")
+            logger.info(f"Waiting... tty1 active: {tty1_ok}, tty2 active: {tty2_ok}")
             first_log = False
             
         time.sleep(2.0)
