@@ -200,7 +200,8 @@ class RecoveryService:
 
         # 7. Requeue failed jobs
         requeue_ok = self.requeue_failed()
-        
+        steps.append(("Requeue Failed", requeue_ok))
+
         # 8. Run model warmup
         warmup_ok = self.warm_model(model_name)
         steps.append(("Model Warmup", warmup_ok))

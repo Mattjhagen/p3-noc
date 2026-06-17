@@ -7,6 +7,7 @@ import asyncio
 import logging
 import subprocess
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +26,21 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config.settings import T310_IP, T310_USER, DATABASE_URL, BTC_CLI_PATH
 from services.db_service import DBService
 
-app = FastAPI(title="Bitcoin Core Node Monitor")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Spawns background polling and database logging threads on startup."""
+    poll_thread = threading.Thread(target=poll_loop, daemon=True)
+    poll_thread.start()
+
+    db_thread = threading.Thread(target=db_snapshot_loop, daemon=True)
+    db_thread.start()
+
+    logger.info("Started background polling and database snapshot loops.")
+    yield
+    # Nothing special needed on shutdown — threads are daemon threads
+
+
+app = FastAPI(title="Bitcoin Core Node Monitor", lifespan=lifespan)
 
 # Enable CORS for NOC dashboard integrations
 app.add_middleware(
@@ -201,16 +216,18 @@ def compute_sync_metrics_and_risk(current_blocks, headers, peer_count, mempool_s
     base_risk = 30.0
     try:
         conn = db_service.get_connection()
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT AVG(importance_score) 
-                FROM analyses 
-                WHERE created_at >= NOW() - INTERVAL '4 hours';
-            """)
-            val = cur.fetchone()[0]
-            if val is not None:
-                base_risk = float(val)
-        conn.close()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT AVG(importance_score) 
+                    FROM analyses 
+                    WHERE created_at >= NOW() - INTERVAL '4 hours';
+                """)
+                val = cur.fetchone()[0]
+                if val is not None:
+                    base_risk = float(val)
+        finally:
+            conn.close()
     except Exception:
         pass
 
@@ -422,9 +439,17 @@ def poll_loop():
     except Exception as e:
         logger.error(f"Error in initial poll: {e}")
 
+    # Create an event loop that runs forever in this thread so
+    # run_coroutine_threadsafe can schedule async WebSocket broadcasts.
     loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
+
+    def run_loop():
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    loop_thread = threading.Thread(target=run_loop, daemon=True)
+    loop_thread.start()
+
     while True:
         try:
             time.sleep(30)
@@ -569,17 +594,7 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-# Startup service triggers
-@app.on_event("startup")
-def start_background_jobs():
-    """Spawns background polling and database logging threads on FastAPI server boot."""
-    poll_thread = threading.Thread(target=poll_loop, daemon=True)
-    poll_thread.start()
-    
-    db_thread = threading.Thread(target=db_snapshot_loop, daemon=True)
-    db_thread.start()
-    
-    logger.info("Started background polling and database snapshot loops.")
+# Startup background jobs are launched via the lifespan context manager above.
 
 
 if __name__ == "__main__":

@@ -258,21 +258,23 @@ class DBService:
                 # Create 24 hourly timestamps ending now
                 bins = [now - timedelta(hours=i) for i in range(23, -1, -1)]
                 
-                # Map query results to their closest bins
+                # Map query results by truncated hour timestamp (not just hour-of-day,
+                # which would collide when the 24h window spans two calendar days)
                 row_map = {}
                 for hr, avg_risk in rows:
                     if hr:
-                        # Normalize timezone if necessary
                         hr_naive = hr.replace(tzinfo=None)
-                        row_map[hr_naive.hour] = int(avg_risk)
+                        # Truncate bin key to the hour
+                        key = hr_naive.replace(minute=0, second=0, microsecond=0)
+                        row_map[key] = int(avg_risk)
                 
                 # Fill the history list
                 last_val = 0
                 for idx, b in enumerate(bins):
-                    h = b.hour
-                    if h in row_map:
-                        history[idx] = row_map[h]
-                        last_val = row_map[h]
+                    key = b.replace(minute=0, second=0, microsecond=0)
+                    if key in row_map:
+                        history[idx] = row_map[key]
+                        last_val = row_map[key]
                     else:
                         history[idx] = last_val # forward-fill last known risk level
             return history

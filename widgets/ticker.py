@@ -61,7 +61,8 @@ class TickerWidget(Static):
         primary = theme["primary"]
         
         text_obj = Text(display_str, style=primary)
-        # Highlight specific patterns in the ticker (e.g. BTC and headlines) for rich visual effect
-        text_obj.highlight_words(["ONLINE", "OFFLINE"], "bold green" if "ONLINE" in display_str else "bold red")
+        # Highlight ONLINE green and OFFLINE red independently
+        text_obj.highlight_words(["ONLINE"], "bold green")
+        text_obj.highlight_words(["OFFLINE"], "bold red")
         
         self.update(text_obj)

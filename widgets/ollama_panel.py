@@ -17,6 +17,8 @@ class OllamaPanel(Static):
     active_requests = reactive(0)
     queue_state = reactive("IDLE")
     server_host = reactive("r510")
+    failures_count = reactive(0)
+    requests_count = reactive(0)
     
     current_theme = reactive("matrix-green")
 
@@ -56,6 +58,11 @@ class OllamaPanel(Static):
             content.append(f"{self.last_query_age_str or 'N/A':<8}", style=accent)
             content.append(" | Queue:      ", style="white")
             content.append(f"{state}\n", style=state_color)
+
+            content.append(" Req:    ", style="white")
+            content.append(f"{self.requests_count:<8}", style=accent)
+            content.append(" | Failures:   ", style="white")
+            content.append(f"{self.failures_count}\n", style=error if self.failures_count > 0 else healthy)
         else:
             # Layout B: Narrow (6 rows)
             content.append(" Status: ", style="white")
@@ -75,5 +82,10 @@ class OllamaPanel(Static):
 
             content.append(" Queue: ", style="white")
             content.append(f"{state}\n", style=state_color)
+
+            content.append(" Req/Fail: ", style="white")
+            content.append(f"{self.requests_count}", style=accent)
+            content.append("/", style="white")
+            content.append(f"{self.failures_count}\n", style=error if self.failures_count > 0 else healthy)
 
         return content

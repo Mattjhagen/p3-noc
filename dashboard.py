@@ -46,6 +46,7 @@ from widgets.watchdog_panel import WatchdogPanel
 from widgets.display_rotation_control import DisplayRotationControl
 from widgets.ai_market_briefing import AiMarketBriefingWidget
 from widgets.bitcoin_node_panel import BitcoinNodePanel
+from widgets.log_panel import LogPanel
 
 
 import logging
@@ -666,6 +667,11 @@ class P3NocApp(App):
     }
     
     /* Layout & dimensions */
+    LogPanel {
+        height: 8;
+        margin: 0 1 1 1;
+    }
+
     AiMarketBriefingWidget {
         height: 9;
         margin: 0 1 1 1;
@@ -815,6 +821,7 @@ class P3NocApp(App):
                 yield self.safe_instantiate(WatchdogPanel)
                 
         yield self.safe_instantiate(NewsFeed)
+        yield self.safe_instantiate(LogPanel)
         yield self.safe_instantiate(AiMarketBriefingWidget)
         yield self.safe_instantiate(TickerWidget)
         yield Footer()
@@ -1144,6 +1151,14 @@ class P3NocApp(App):
             alerts.host_ram_percent = ram
             alerts.env_ollama_model = OLLAMA_MODEL
             alerts.active_ollama_model = ollama_stats["model"]
+        except Exception:
+            pass
+
+        # Update Log Panel with fetched worker logs
+        try:
+            log_panel = self.query_one(LogPanel)
+            log_panel.update_logs(logs)
+            log_panel.current_theme = THEMES[self.theme_index]
         except Exception:
             pass
 
@@ -1567,12 +1582,12 @@ class P3NocApp(App):
         )
 
     def _restart_ollama_job(self):
-        self.notify("Restarting Ollama service. Verifying status...")
+        self.app.call_from_thread(self.notify, "Restarting Ollama service. Verifying status...")
         res = self.recovery_service.restart_ollama()
         if res:
-            self.notify("Ollama service restarted successfully. Active tags confirmed.")
+            self.app.call_from_thread(self.notify, "Ollama service restarted successfully. Active tags confirmed.")
         else:
-            self.notify("Ollama restart failed or service timed out.", severity="error")
+            self.app.call_from_thread(self.notify, "Ollama restart failed or service timed out.", severity="error")
 
     def action_warm_model(self):
         """F11: Warm Model Cache."""
@@ -1584,9 +1599,9 @@ class P3NocApp(App):
     def _warm_model_job(self):
         res = self.recovery_service.warm_model(self.ollama_model)
         if res:
-            self.notify(f"Cache preloaded successfully for model '{self.ollama_model}'.")
+            self.app.call_from_thread(self.notify, f"Cache preloaded successfully for model '{self.ollama_model}'.")
         else:
-            self.notify(f"Failed to preload model cache for '{self.ollama_model}'.", severity="warning")
+            self.app.call_from_thread(self.notify, f"Failed to preload model cache for '{self.ollama_model}'.", severity="warning")
 
     def action_health_recovery(self):
         """F12: Full Health Recovery."""
@@ -2061,6 +2076,9 @@ class P3NocApp(App):
             age_exceeded = True
 
         if new_analysis_arrived or age_exceeded:
+            # Update last_analyzed_id BEFORE triggering the refresh so subsequent
+            # 30-second checks don't re-trigger until a genuinely new analysis arrives.
+            self.last_analyzed_id = current_id
             self.run_market_briefing_update()
 
     def run_market_briefing_update(self, manual=False):
@@ -2454,6 +2472,7 @@ class P3NocApp(App):
         # Update AiServerStatusPanel reactive variables
         try:
             ai_panel = self.query_one(AiServerStatusPanel)
+            ai_panel.host = AI_SERVER_HOST
             ai_panel.ping_latency = res["ping_latency"]
             ai_panel.ssh_status = "ONLINE" if res["ssh_ok"] else "OFFLINE"
             ai_panel.ollama_status = "ONLINE" if res["ollama_ok"] else "OFFLINE"

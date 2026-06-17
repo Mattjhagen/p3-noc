@@ -5,8 +5,9 @@ class RoutingService:
     headlines to the deep model and normal headlines to the fast model.
     Supports Safe Mode override which restricts all routing to the fast model.
     """
-    def __init__(self, model_fast="phi3:mini", model_deep="qwen3:8b"):
-        self.model_fast = model_fast
+    def __init__(self, model_fast=None, model_deep="qwen3:8b"):
+        from config.settings import OLLAMA_MODEL
+        self.model_fast = model_fast if model_fast else OLLAMA_MODEL
         self.model_deep = model_deep
         self.safe_mode_active = False
 

@@ -36,6 +36,9 @@ class HeaderWidget(Widget):
     
     status_str = reactive("HEALTHY")
     
+    worker_efficiency = reactive(100.0)
+    avg_time = reactive(0.0)
+    
     # Remote AI Server Monitoring reactive states
     ai_server_status = reactive("GREEN")
     ai_server_is_critical = reactive(False)
