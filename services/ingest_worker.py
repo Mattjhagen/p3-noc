@@ -217,7 +217,7 @@ def process_pending_queue(conn):
             """SELECT q.article_id, a.title, a.url
                FROM processing_queue q
                JOIN articles a ON a.id = q.article_id
-               WHERE q.status = 'pending' AND q.retry_count < 3
+               WHERE q.status = 'pending' AND COALESCE(q.retry_count, 0) < 3
                ORDER BY q.created_at ASC
                LIMIT 10"""
         )
