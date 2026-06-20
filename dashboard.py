@@ -34,6 +34,7 @@ from widgets.risk_radar import RiskRadar
 from widgets.news_feed import NewsFeed
 from widgets.log_panel import LogPanel
 from widgets.ticker import TickerWidget
+from widgets.btc_sync_panel import BtcSyncPanel
 from widgets.sys_metrics_panel import SysMetricsPanel
 from widgets.risk_trend_panel import RiskTrendPanel
 from widgets.confirmation_dialog import ConfirmationDialog
@@ -515,9 +516,10 @@ class P3NocApp(App):
         ("ctrl+c", "quit_app", "Quit"),
     ]
 
-    def __init__(self, wallboard_mode=False, compact_mode=False, **kwargs):
+    def __init__(self, wallboard_mode=False, compact_mode=False, btc_ops_mode=False, **kwargs):
         super().__init__(**kwargs)
         self.wallboard_mode = wallboard_mode
+        self.btc_ops_mode = btc_ops_mode
         self.default_compact = compact_mode
         self.theme_index = 0
         self.logs_fullscreen = False
@@ -575,7 +577,12 @@ class P3NocApp(App):
     def compose(self) -> ComposeResult:
         """Compose layout grid."""
         yield self.safe_instantiate(HeaderWidget)
-        
+
+        if self.btc_ops_mode:
+            yield self.safe_instantiate(BtcSyncPanel)
+            yield self.safe_instantiate(TickerWidget)
+            return
+
         with Container(id="grid-middle"):
             with Container(id="left-col"):
                 yield self.safe_instantiate(SystemPanel)
@@ -1598,10 +1605,11 @@ class WeeklyReportDialog(ModalScreen):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="P3 NOC — Bitcoin Intelligence Operations Center")
     parser.add_argument("--wallboard", action="store_true", help="Launch in wallboard mode (auto-focus rotation, double border, no footer)")
+    parser.add_argument("--btc-ops", action="store_true", help="Launch Bitcoin sync operations screen")
     parser.add_argument("--compact", action="store_true", help="Launch in compact layout mode")
     args = parser.parse_args()
 
-    app = P3NocApp(wallboard_mode=args.wallboard, compact_mode=args.compact)
+    app = P3NocApp(wallboard_mode=args.wallboard, compact_mode=args.compact, btc_ops_mode=args.btc_ops)
     try:
         sys.exit(app.run())
     except KeyboardInterrupt:
