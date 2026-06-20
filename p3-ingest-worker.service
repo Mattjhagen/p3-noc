@@ -1,0 +1,16 @@
+[Unit]
+Description=P3 Bitcoin Research Ingest Worker
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=matty
+WorkingDirectory=/opt/p3-noc
+ExecStart=/opt/p3-noc/.venv/bin/python3 services/ingest_worker.py
+Restart=always
+RestartSec=15
+EnvironmentFile=-/opt/p3-noc/.env
+
+[Install]
+WantedBy=multi-user.target
