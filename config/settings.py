@@ -17,7 +17,7 @@ DATABASE_URL = os.getenv(
 
 # Ollama Endpoint configurations
 OLLAMA_REMOTE = os.getenv("OLLAMA_REMOTE", "true").lower() == "true"
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "192.168.1.47")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "192.168.1.73")
 OLLAMA_PORT = os.getenv("OLLAMA_PORT", "11434")
 OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
 OLLAMA_HOST_NAME = os.getenv("OLLAMA_HOST_NAME", "r510")
@@ -26,11 +26,11 @@ OLLAMA_CONTEXT_LIMIT = int(os.getenv("OLLAMA_CONTEXT_LIMIT", "40960"))
 
 # AI Server Monitoring configurations
 AI_SERVER_HOST = os.getenv("AI_SERVER_HOST", "r510")
-AI_SERVER_IP = os.getenv("AI_SERVER_IP", "192.168.1.47")
+AI_SERVER_IP = os.getenv("AI_SERVER_IP", "192.168.1.73")
 
 # T310 connection configurations for R510 Remote Control
 T310_HOST = os.getenv("T310_HOST", "p3noc")
-T310_IP = os.getenv("T310_IP", "192.168.1.158")
+T310_IP = os.getenv("T310_IP", "192.168.1.161")
 T310_USER = os.getenv("T310_USER", "matt")
 
 # Systemd services to monitor

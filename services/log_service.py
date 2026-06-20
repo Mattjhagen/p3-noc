@@ -17,7 +17,7 @@ class LogService:
             ("INFO", "[main] Starting P3 Command Center Worker Daemon..."),
             ("INFO", "[database] Connecting to PostgreSQL at localhost:5432..."),
             ("INFO", "[database] Connection established successfully."),
-            ("INFO", "[ollama] Connecting to Ollama server at 192.168.1.47:11434..."),
+            ("INFO", "[ollama] Connecting to Ollama server at 192.168.1.73:11434..."),
             ("INFO", "[ollama] Ollama model 'qwen2.5:8b' confirmed online."),
             ("INFO", "[main] Ingest worker listening to RSS feeds: Coindesk, Blockworks, Bitcoin Magazine."),
             ("INFO", "[main] Processing queue started, checking for pending jobs..."),
@@ -36,7 +36,7 @@ class LogService:
             ("INFO", "[main] Queue item 11 completed."),
             ("INFO", "[main] Processing article 12: 'Exchange insolvency concerns emerge'"),
             ("INFO", "[ollama] Sending prompt to Ollama model qwen2.5:8b..."),
-            ("CRITICAL", "[ollama] Ollama connection refused at 192.168.1.47:11434! R510 offline?"),
+            ("CRITICAL", "[ollama] Ollama connection refused at 192.168.1.73:11434! R510 offline?"),
             ("WARNING", "[main] Circuit Breaker: 1 consecutive Ollama failure detected."),
             ("INFO", "[main] Retrying article 12 in 10 seconds..."),
         ]
