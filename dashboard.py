@@ -728,13 +728,19 @@ class P3NocApp(App):
             self.startup_errors.append(f"PostgreSQL Check Failed: {e}")
             
         try:
-            if self.ollama_service.check_ollama_status() != "ONLINE":
-                if OLLAMA_REMOTE:
-                    self.startup_errors.append("Remote Ollama Endpoint Unreachable")
-                else:
-                    self.startup_errors.append("Ollama Endpoint Unreachable")
+            # Check AI service (Ollama or OpenCode)
+            if USE_OPENCODE and self.opencode_service:
+                ai_status = self.opencode_service.check_status()
+                if ai_status != "ONLINE":
+                    self.startup_errors.append("OpenCode AI Unavailable")
+            elif self.ollama_service:
+                if self.ollama_service.check_ollama_status() != "ONLINE":
+                    if OLLAMA_REMOTE:
+                        self.startup_errors.append("Remote Ollama Endpoint Unreachable")
+                    else:
+                        self.startup_errors.append("Ollama Endpoint Unreachable")
         except Exception as e:
-            self.startup_errors.append(f"Ollama Check Failed: {e}")
+            self.startup_errors.append(f"AI Check Failed: {e}")
             
         try:
             if not self.feed_service.check_worker_service_status():
@@ -771,7 +777,15 @@ class P3NocApp(App):
             worker_active = self.feed_service.check_worker_service_status()
             ingest_active = self.feed_service.check_ingest_service_status()
             db_active = self.db_service.check_db_health()
-            ollama_stats = self.ollama_service.get_ollama_stats()
+
+            # Get AI stats from appropriate service
+            if USE_OPENCODE and self.opencode_service:
+                ollama_stats = self.opencode_service.get_stats()
+            elif self.ollama_service:
+                ollama_stats = self.ollama_service.get_ollama_stats()
+            else:
+                ollama_stats = {"status": "OFFLINE", "model": "N/A", "server": "N/A"}
+
             logs = self.log_service.fetch_worker_logs(lines=100)
             
             # Fetch host RAM usage to feed Smart Recommendations
@@ -1239,7 +1253,14 @@ class P3NocApp(App):
             db_ok = self.db_service.check_db_health()
             worker_ok = self.feed_service.check_worker_service_status()
             ingest_ok = self.feed_service.check_ingest_service_status()
-            ollama_stats = self.ollama_service.get_ollama_stats()
+
+            # Get AI stats from appropriate service
+            if USE_OPENCODE and self.opencode_service:
+                ollama_stats = self.opencode_service.get_stats()
+            elif self.ollama_service:
+                ollama_stats = self.ollama_service.get_ollama_stats()
+            else:
+                ollama_stats = {"status": "OFFLINE", "failures": 0}
             
             queue_counts = self.db_service.get_queue_counts()
             oldest_age = self.db_service.get_oldest_processing_age()
