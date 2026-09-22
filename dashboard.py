@@ -12,11 +12,12 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen
 
 # Import configuration settings and themes
-from config.settings import REFRESH_RATES, OLLAMA_MODEL, OLLAMA_REMOTE
+from config.settings import REFRESH_RATES, OLLAMA_MODEL, OLLAMA_REMOTE, USE_OPENCODE, OPENCODE_MODEL
 from config.themes import THEMES, THEME_NAMES
 from services.db_service import DBService
 from services.log_service import LogService
 from services.ollama_service import OllamaService
+from services.opencode_service import OpenCodeService
 from services.feed_service import FeedService
 from services.btc_ticker_service import BTCTickerService
 from services.recovery_service import RecoveryService
@@ -552,7 +553,17 @@ class P3NocApp(App):
         # Initialize services
         self.db_service = DBService()
         self.log_service = LogService()
-        self.ollama_service = OllamaService()
+
+        # Use OpenCode or Ollama based on configuration
+        if USE_OPENCODE:
+            self.opencode_service = OpenCodeService(model=OPENCODE_MODEL)
+            self.ollama_service = None
+            self.ai_service = self.opencode_service  # Unified AI service reference
+        else:
+            self.ollama_service = OllamaService()
+            self.opencode_service = None
+            self.ai_service = self.ollama_service
+
         self.feed_service = FeedService()
         self.ticker_service = BTCTickerService()
         self.recovery_service = RecoveryService()
@@ -562,10 +573,15 @@ class P3NocApp(App):
             db_service=self.db_service,
             recovery_service=self.recovery_service,
             feed_service=self.feed_service,
-            ollama_service=self.ollama_service,
+            ollama_service=self.ollama_service if self.ollama_service else self.opencode_service,
             routing_service=self.routing_service
         )
         self.ai_server_service = AiServerService()
+
+        # AI-powered automated monitoring
+        self.ai_monitoring_enabled = USE_OPENCODE
+        self.last_ai_diagnosis = None
+        self.ai_fix_history = []
         
         # Runtime status states
         self.worker_online = True
