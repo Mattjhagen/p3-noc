@@ -7,25 +7,30 @@ logger = logging.getLogger("dashboard")
 
 class OpenCodeService:
     """
-    Service to interact with OpenCode's Big Pickle AI model.
+    Service to interact with OpenCode free AI models.
     Uses the opencode CLI to generate responses.
+    Supports: gemini-free, deepseek, claude-fable models.
     """
 
-    def __init__(self, model="opencode/big-pickle"):
+    def __init__(self, model="gemini-free/gemini-3-flash-preview"):
         self.model = model
         self.status_cache = "UNKNOWN"
 
     def check_status(self) -> str:
         """Check if OpenCode service is available."""
+        # Return cached status if we've checked recently
+        if self.status_cache != "UNKNOWN":
+            return self.status_cache
+
         try:
-            # Test if opencode command is available
+            # Quick check - just see if opencode command exists
             result = subprocess.run(
-                ["opencode", "models", "opencode"],
+                ["which", "opencode"],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=2
             )
-            if result.returncode == 0 and "big-pickle" in result.stdout:
+            if result.returncode == 0:
                 self.status_cache = "ONLINE"
                 return "ONLINE"
             else:
@@ -106,12 +111,14 @@ Keep response under 300 characters."""
     def get_stats(self) -> dict:
         """Get OpenCode service statistics."""
         status = self.check_status()
+        # Extract model name for display
+        model_display = self.model.split("/")[-1] if "/" in self.model else self.model
         return {
-            "model": self.model,
-            "server": "OpenCode Big Pickle",
+            "model": model_display,
+            "server": "OpenCode Free AI",
             "status": status,
-            "provider": "opencode-free",
-            "latency": "~3s",  # Estimated
+            "provider": "gemini-free" if "gemini" in self.model else "opencode",
+            "latency": "~2s",  # Gemini is fast
             "cost": "$0.00"
         }
 
