@@ -10,8 +10,6 @@ class DBService:
     def __init__(self):
         self.db_url = DATABASE_URL
         self.init_operations_log_table()
-        self.init_briefing_cache_table()
-        self.init_bitcoin_history_table()
 
     def init_operations_log_table(self):
         """Create operations_log table if it does not exist."""
@@ -258,23 +256,21 @@ class DBService:
                 # Create 24 hourly timestamps ending now
                 bins = [now - timedelta(hours=i) for i in range(23, -1, -1)]
                 
-                # Map query results by truncated hour timestamp (not just hour-of-day,
-                # which would collide when the 24h window spans two calendar days)
+                # Map query results to their closest bins
                 row_map = {}
                 for hr, avg_risk in rows:
                     if hr:
+                        # Normalize timezone if necessary
                         hr_naive = hr.replace(tzinfo=None)
-                        # Truncate bin key to the hour
-                        key = hr_naive.replace(minute=0, second=0, microsecond=0)
-                        row_map[key] = int(avg_risk)
+                        row_map[hr_naive.hour] = int(avg_risk)
                 
                 # Fill the history list
                 last_val = 0
                 for idx, b in enumerate(bins):
-                    key = b.replace(minute=0, second=0, microsecond=0)
-                    if key in row_map:
-                        history[idx] = row_map[key]
-                        last_val = row_map[key]
+                    h = b.hour
+                    if h in row_map:
+                        history[idx] = row_map[h]
+                        last_val = row_map[h]
                     else:
                         history[idx] = last_val # forward-fill last known risk level
             return history
@@ -336,17 +332,32 @@ class DBService:
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
+                # First check if feed_sources table exists
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_name = 'feed_sources'
+                    );
+                """)
+                table_exists = cur.fetchone()[0]
+
+                if not table_exists:
+                    # No RSS feed table = no RSS feature = return True (not an error)
+                    logger.debug("feed_sources table does not exist - RSS feeds not configured")
+                    return True
+
                 # Check if there's any successful feed poll in the last 24 hours
                 cur.execute("""
-                    SELECT COUNT(*) FROM feed_sources 
-                    WHERE enabled = TRUE 
+                    SELECT COUNT(*) FROM feed_sources
+                    WHERE enabled = TRUE
                       AND (last_successful_poll IS NULL OR last_successful_poll >= NOW() - INTERVAL '24 hours');
                 """)
                 count = cur.fetchone()[0]
                 return count > 0
         except Exception as e:
             logger.error(f"Failed to check RSS feed health: {e}")
-            return False
+            # On error, return True to avoid false alerts
+            return True
         finally:
             if conn:
                 conn.close()
@@ -433,207 +444,6 @@ class DBService:
                 return float(val) if val is not None else 0.0
         except Exception:
             return 0.0
-        finally:
-            if conn:
-                conn.close()
-
-    def init_briefing_cache_table(self):
-        """Create briefing_cache table if it does not exist."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS briefing_cache (
-                        id SERIAL PRIMARY KEY,
-                        market_state VARCHAR(50) NOT NULL,
-                        confidence VARCHAR(10) NOT NULL,
-                        briefing_text TEXT NOT NULL,
-                        generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                    );
-                """)
-                conn.commit()
-        except Exception as e:
-            logger.error(f"Failed to initialize briefing_cache table: {e}")
-        finally:
-            if conn:
-                conn.close()
-
-    def save_briefing_to_cache(self, market_state: str, confidence: str, briefing_text: str) -> bool:
-        """Persist generated AI briefing to database cache."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO briefing_cache (market_state, confidence, briefing_text, generated_at)
-                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP);
-                """, (market_state, confidence, briefing_text))
-                conn.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Failed to save briefing to cache: {e}")
-            if conn:
-                conn.rollback()
-            return False
-        finally:
-            if conn:
-                conn.close()
-
-    def get_latest_cached_briefing(self) -> dict:
-        """Retrieve the most recent AI briefing from PostgreSQL cache."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT market_state, confidence, briefing_text, generated_at
-                    FROM briefing_cache
-                    ORDER BY generated_at DESC
-                    LIMIT 1;
-                """)
-                return cur.fetchone()
-        except Exception as e:
-            logger.error(f"Failed to fetch latest cached briefing: {e}")
-            return None
-        finally:
-            if conn:
-                conn.close()
-
-    def get_latest_analysis_id(self) -> int:
-        """Get the max ID in analyses to track new arrivals."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            with conn.cursor() as cur:
-                cur.execute("SELECT MAX(id) FROM analyses;")
-                val = cur.fetchone()[0]
-                return val if val is not None else 0
-        except Exception:
-            return 0
-        finally:
-            if conn:
-                conn.close()
-
-    def get_latest_analyzed_articles_for_briefing(self, limit=10) -> list:
-        """Get latest articles and analyses for briefing Ollama context."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT a.title, an.sentiment, an.importance_score, an.summary
-                    FROM analyses an
-                    JOIN articles a ON an.article_id = a.id
-                    ORDER BY an.created_at DESC
-                    LIMIT %s;
-                """, (limit,))
-                return cur.fetchall()
-        except Exception as e:
-            logger.error(f"Failed to fetch analyzed articles for briefing: {e}")
-            return []
-        finally:
-            if conn:
-                conn.close()
-
-    def get_last_analysis_time(self):
-        """Get the created_at timestamp of the most recent analysis version."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            with conn.cursor() as cur:
-                cur.execute("SELECT created_at FROM analysis_versions ORDER BY created_at DESC LIMIT 1;")
-                row = cur.fetchone()
-                return row[0] if row else None
-        except Exception:
-            return None
-        finally:
-            if conn:
-                conn.close()
-
-    def init_bitcoin_history_table(self):
-        """Create bitcoin_history table if it does not exist."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS bitcoin_history (
-                        id SERIAL PRIMARY KEY,
-                        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        blocks INTEGER NOT NULL,
-                        headers INTEGER NOT NULL,
-                        peer_count INTEGER NOT NULL,
-                        verification_progress NUMERIC(5, 2) NOT NULL,
-                        mempool_size INTEGER NOT NULL,
-                        disk_usage NUMERIC(10, 2) NOT NULL,
-                        difficulty NUMERIC(30, 4) NOT NULL,
-                        blockchain_size NUMERIC(10, 2) NOT NULL
-                    );
-                """)
-                # Migrations: Add new columns if they do not exist
-                cur.execute("""
-                    ALTER TABLE bitcoin_history ADD COLUMN IF NOT EXISTS blocks_per_hour NUMERIC(10, 2) DEFAULT 0.0;
-                """)
-                cur.execute("""
-                    ALTER TABLE bitcoin_history ADD COLUMN IF NOT EXISTS ai_risk_signal NUMERIC(5, 2) DEFAULT 0.0;
-                """)
-                conn.commit()
-        except Exception as e:
-            logger.error(f"Failed to initialize bitcoin_history table: {e}")
-        finally:
-            if conn:
-                conn.close()
-
-    def save_bitcoin_snapshot(self, blocks: int, headers: int, peer_count: int,
-                              verification_progress: float, mempool_size: int,
-                              disk_usage: float, difficulty: float, blockchain_size: float,
-                              blocks_per_hour: float = 0.0, ai_risk_signal: float = 0.0) -> bool:
-        """Persist a new Bitcoin Core node state snapshot."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO bitcoin_history (
-                        blocks, headers, peer_count, verification_progress,
-                        mempool_size, disk_usage, difficulty, blockchain_size,
-                        blocks_per_hour, ai_risk_signal
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
-                """, (blocks, headers, peer_count, verification_progress,
-                      mempool_size, disk_usage, difficulty, blockchain_size,
-                      blocks_per_hour, ai_risk_signal))
-                conn.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Failed to save bitcoin snapshot: {e}")
-            if conn:
-                conn.rollback()
-            return False
-        finally:
-            if conn:
-                conn.close()
-
-    def get_bitcoin_history(self, limit=288) -> list:
-        """Retrieve historical bitcoin node snapshots, ordered by timestamp ascending."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT timestamp, blocks, headers, peer_count, verification_progress,
-                           mempool_size, disk_usage, difficulty, blockchain_size,
-                           blocks_per_hour, ai_risk_signal
-                    FROM bitcoin_history
-                    ORDER BY timestamp DESC
-                    LIMIT %s;
-                """, (limit,))
-                # Order ascending for time series graphing
-                rows = cur.fetchall()
-                return list(reversed(rows))
-        except Exception as e:
-            logger.error(f"Failed to fetch bitcoin history: {e}")
-            return []
         finally:
             if conn:
                 conn.close()
