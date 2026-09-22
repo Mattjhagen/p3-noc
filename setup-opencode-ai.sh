@@ -45,11 +45,11 @@ systemctl start bitcoin-worker.service bitcoin-ingest.service
 echo "  ✓ Services created and started"
 
 # 2. Test OpenCode
-echo "[2/5] Testing OpenCode Big Pickle..."
-if opencode run "test" --model opencode/big-pickle --pure > /dev/null 2>&1; then
-    echo "  ✓ OpenCode Big Pickle is working"
+echo "[2/5] Testing OpenCode Gemini 3 Flash..."
+if opencode run "test" --model gemini-free/gemini-3-flash-preview --pure > /dev/null 2>&1; then
+    echo "  ✓ OpenCode Gemini 3 Flash is working"
 else
-    echo "  ✗ OpenCode Big Pickle test failed"
+    echo "  ✗ OpenCode test failed"
     echo "  Run: opencode providers"
     exit 1
 fi
@@ -80,7 +80,7 @@ echo "  Setup Complete - OpenCode AI Active!"
 echo "======================================================"
 echo ""
 echo "Configuration:"
-echo "  ✓ AI Model: OpenCode Big Pickle (FREE)"
+echo "  ✓ AI Model: Gemini 3 Flash (FREE)"
 echo "  ✓ Database: Connected (PostgreSQL)"
 echo "  ✓ Worker Service: Active"
 echo "  ✓ Ingest Service: Active"
