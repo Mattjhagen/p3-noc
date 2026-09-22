@@ -893,9 +893,13 @@ class P3NocApp(App):
             tp_panel.avg_time = throughput["avg_time"]
             tp_panel.remaining = throughput["remaining"]
             tp_panel.eta_str = throughput["eta_str"]
-            
+
             total = queue_counts["completed"] + queue_counts["failed"]
-            efficiency = (queue_counts["completed"] / max(total, 1)) * 100.0
+            if total == 0:
+                # No queue data = 100% efficiency (not 0%)
+                efficiency = 100.0
+            else:
+                efficiency = (queue_counts["completed"] / total) * 100.0
             tp_panel.worker_efficiency = efficiency
         except Exception:
             efficiency = 100.0
