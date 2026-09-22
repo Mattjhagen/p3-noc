@@ -1,6 +1,7 @@
 # Theme configuration for P3 NOC
 
 THEMES = [
+    "terminal",
     "matrix-green",
     "amber-crt",
     "cyber-blue",
@@ -12,6 +13,7 @@ THEMES = [
 ]
 
 THEME_NAMES = {
+    "terminal": "Terminal (Black/Red/Green)",
     "matrix-green": "Matrix Green",
     "amber-crt": "Amber CRT",
     "cyber-blue": "Cyber Blue",
@@ -24,6 +26,18 @@ THEME_NAMES = {
 
 # Color configurations for manual rendering fallback (e.g. Rich console markup inside widgets)
 THEME_COLORS = {
+    "terminal": {
+        "primary": "bright_green",
+        "primary_bright": "bright_green",
+        "muted": "grey50",
+        "accent": "bright_red",
+        "warning": "bright_red",
+        "error": "red",
+        "critical": "bright_red",
+        "healthy": "bright_green",
+        "tag": "[bold bright_green on black]",
+        "tag_muted": "[green on black]",
+    },
     "matrix-green": {
         "primary": "green",
         "primary_bright": "bright_green",

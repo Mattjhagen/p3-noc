@@ -34,7 +34,6 @@ from widgets.risk_radar import RiskRadar
 from widgets.news_feed import NewsFeed
 from widgets.log_panel import LogPanel
 from widgets.ticker import TickerWidget
-from widgets.btc_sync_panel import BtcSyncPanel
 from widgets.sys_metrics_panel import SysMetricsPanel
 from widgets.risk_trend_panel import RiskTrendPanel
 from widgets.confirmation_dialog import ConfirmationDialog
@@ -103,7 +102,47 @@ class P3NocApp(App):
     """
     CSS = """
     /* Theme colorways - Explicitly styled to avoid CSS variables */
-    
+
+    /* 0. terminal - Black/Red/Green hacker theme */
+    .terminal Screen {
+        background: #000000;
+        color: #00ff00;
+    }
+    .terminal SystemPanel, .terminal ThroughputPanel, .terminal SysMetricsPanel,
+    .terminal RiskRadar, .terminal RiskTrendPanel, .terminal RunbookPanel,
+    .terminal OllamaPanel, .terminal AlertPanel, .terminal AutopilotPanel,
+    .terminal NewsFeed, .terminal LogPanel, .terminal TickerWidget {
+        border: round #00ff00;
+        background: #000000;
+        color: #00ff00;
+    }
+    .terminal SystemPanel:focus, .terminal ThroughputPanel:focus, .terminal SysMetricsPanel:focus,
+    .terminal RiskRadar:focus, .terminal RiskTrendPanel:focus, .terminal RunbookPanel:focus,
+    .terminal OllamaPanel:focus, .terminal AlertPanel:focus, .terminal AutopilotPanel:focus,
+    .terminal NewsFeed:focus, .terminal LogPanel:focus, .terminal TickerWidget:focus {
+        border: double #ff0000;
+    }
+    .terminal.wallboard-mode SystemPanel, .terminal.wallboard-mode ThroughputPanel, .terminal.wallboard-mode SysMetricsPanel,
+    .terminal.wallboard-mode RiskRadar, .terminal.wallboard-mode RiskTrendPanel, .terminal.wallboard-mode RunbookPanel,
+    .terminal.wallboard-mode OllamaPanel, .terminal.wallboard-mode AlertPanel, .terminal.wallboard-mode AutopilotPanel,
+    .terminal.wallboard-mode NewsFeed, .terminal.wallboard-mode LogPanel, .terminal.wallboard-mode TickerWidget {
+        border: double #ff0000;
+    }
+    .terminal TickerWidget {
+        background: #000000;
+    }
+    .terminal AiServerStatusPanel {
+        border: round #00ff00;
+        background: #000000;
+        color: #00ff00;
+    }
+    .terminal AiServerStatusPanel:focus {
+        border: double #ff0000;
+    }
+    .terminal.wallboard-mode AiServerStatusPanel {
+        border: double #ff0000;
+    }
+
     /* 1. matrix-green */
     .matrix-green Screen {
         background: #020a02;
@@ -482,16 +521,6 @@ class P3NocApp(App):
     .midnight.wallboard-mode AiServerStatusPanel {
         border: double #ffffff;
     }
-
-    .compact-layout #grid-middle {
-        height: 18;
-    }
-    .compact-layout NewsFeed {
-        height: 5;
-    }
-    .compact-layout LogPanel {
-        height: 5;
-    }
     """
 
     # Keyboard Bindings
@@ -512,15 +541,11 @@ class P3NocApp(App):
         ("f11", "warm_model", "Warm Model Cache"),
         ("f12", "health_recovery", "Full Health Recovery"),
         ("q", "quit_app", "Quit"),
-        ("ctrl+q", "quit_app", "Quit"),
-        ("ctrl+c", "quit_app", "Quit"),
     ]
 
-    def __init__(self, wallboard_mode=False, compact_mode=False, btc_ops_mode=False, **kwargs):
+    def __init__(self, wallboard_mode=False, **kwargs):
         super().__init__(**kwargs)
         self.wallboard_mode = wallboard_mode
-        self.btc_ops_mode = btc_ops_mode
-        self.default_compact = compact_mode
         self.theme_index = 0
         self.logs_fullscreen = False
         
@@ -577,12 +602,7 @@ class P3NocApp(App):
     def compose(self) -> ComposeResult:
         """Compose layout grid."""
         yield self.safe_instantiate(HeaderWidget)
-
-        if self.btc_ops_mode:
-            yield self.safe_instantiate(BtcSyncPanel)
-            yield self.safe_instantiate(TickerWidget)
-            return
-
+        
         with Container(id="grid-middle"):
             with Container(id="left-col"):
                 yield self.safe_instantiate(SystemPanel)
@@ -613,13 +633,6 @@ class P3NocApp(App):
             self.add_class("wallboard-mode")
             self.set_interval(6.0, self.auto_rotate_focus)
             self.query_one(Footer).display = False
-        if self.default_compact:
-            self.add_class("compact-layout")
-            try:
-                header = self.query_one(HeaderWidget)
-                header.compact_mode = True
-            except Exception:
-                pass
 
         # 2. Run Startup Health Validation
         self.run_startup_validation()
@@ -1008,10 +1021,6 @@ class P3NocApp(App):
         try:
             header = self.query_one(HeaderWidget)
             header.compact_mode = not header.compact_mode
-            if header.compact_mode:
-                self.add_class("compact-layout")
-            else:
-                self.remove_class("compact-layout")
         except Exception:
             pass
 
@@ -1185,7 +1194,7 @@ class P3NocApp(App):
             self.notify(f"Health recovery runbook execution error: {e}", severity="error")
 
     def action_quit_app(self):
-        self.exit(123)
+        self.exit()
 
     def auto_rotate_focus(self):
         widgets = [
@@ -1605,12 +1614,7 @@ class WeeklyReportDialog(ModalScreen):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="P3 NOC — Bitcoin Intelligence Operations Center")
     parser.add_argument("--wallboard", action="store_true", help="Launch in wallboard mode (auto-focus rotation, double border, no footer)")
-    parser.add_argument("--btc-ops", action="store_true", help="Launch Bitcoin sync operations screen")
-    parser.add_argument("--compact", action="store_true", help="Launch in compact layout mode")
     args = parser.parse_args()
 
-    app = P3NocApp(wallboard_mode=args.wallboard, compact_mode=args.compact, btc_ops_mode=args.btc_ops)
-    try:
-        sys.exit(app.run())
-    except KeyboardInterrupt:
-        sys.exit(123)
+    app = P3NocApp(wallboard_mode=args.wallboard)
+    app.run()
